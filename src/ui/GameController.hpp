@@ -1,14 +1,9 @@
 #pragma once
 /// @file GameController.hpp
-/// @brief MVC glue. Owns the core::GameEngine, an AIEngine, and an opening
-///        book. Translates raw square clicks into engine calls, schedules
-///        AI moves on a worker thread, and consults the book before searching.
-///
-/// After the AI plays a move, it immediately starts a silent ponder search
-/// on the position the human now faces. The ponder search warms the shared
-/// transposition table so the AI's next real search reaches greater depth
-/// in the same 5-second budget. The ponder search is cancelled the moment
-/// the human makes a move.
+/// @brief MVC glue. Owns the core::GameEngine, an AIEngine, an opening book,
+///        and a move timer. Translates raw square clicks into engine calls,
+///        schedules AI moves on a worker thread, and starts silent ponder
+///        searches during the human's turn.
 
 #include "core/GameEngine.hpp"
 #include "core/Types.hpp"
@@ -17,6 +12,9 @@
 #include "ai/OpeningBook.hpp"
 
 #include <QObject>
+#include <QTimer>
+
+#include <chrono>
 #include <optional>
 #include <vector>
 
@@ -77,6 +75,7 @@ public slots:
     void undo();
     void redo();
     void resign();
+    void offerDraw();
     void setMode(controller::GameMode m);
 
 signals:
@@ -84,8 +83,10 @@ signals:
     void moveApplied(const core::MoveRecord& rec, const core::Board& preBoard);
     void aiThinkingChanged(bool thinking);
     void aiProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
-    void ponderProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
     void openingBookPlayed();
+    void ponderProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
+    void timeChanged(quint64 redMs, quint64 yellowMs);
+    void drawOffered(bool accepted, const QString& reason);
 
 private:
     core::GameEngine            engine_{};
@@ -99,6 +100,14 @@ private:
     ai::OpeningBook book_;
     ai::AIEngine    ai_;
 
+    // Move timer
+    QTimer*        clockTimer_{nullptr};
+    qint64         elapsedRedMs_{0};
+    qint64         elapsedYellowMs_{0};
+    core::Color    clockSide_{core::Color::Red};
+    std::chrono::steady_clock::time_point clockTurnStart_{};
+    bool           clockRunning_{false};
+
     void clearSelection();
     void loadOpeningBook();
     void maybeTriggerAI();
@@ -106,6 +115,11 @@ private:
     void startPonder();
     void onAISearchDone(const core::Move& move);
     void playMoveFromAI(const core::Move& move);
+
+    void resetClocks();
+    void startClockFor(core::Color side);
+    void stopClock();
+    void commitCurrentSlice();
 };
 
 } // namespace draughts::ui

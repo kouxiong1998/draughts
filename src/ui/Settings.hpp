@@ -23,10 +23,13 @@ public:
     [[nodiscard]] core::Color nextFirstPlayer() const noexcept { return nextFirst_; }
     void setNextFirstPlayer(core::Color c);
 
-    /// Colour the human plays. The opponent (AI or second human) plays the
-    /// opposite colour. Also determines which side is drawn at the bottom.
     [[nodiscard]] core::Color playerColor() const noexcept { return playerColor_; }
     void setPlayerColor(core::Color c);
+
+    /// Which mode the last session used. 0 = Human vs Human, 1 = Human vs AI.
+    /// Persisted so the app resumes in the same mode on next launch.
+    [[nodiscard]] int lastGameMode() const noexcept { return lastGameMode_; }
+    void setLastGameMode(int m);
 
     void load();
     void save();
@@ -41,6 +44,7 @@ private:
     core::RuleSet nextRules_{core::RuleSet::InternationalMaxCapture};
     core::Color   nextFirst_{core::Color::Red};
     core::Color   playerColor_{core::Color::Yellow};
+    int           lastGameMode_{0};
     bool          loading_{false};
 };
 

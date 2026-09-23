@@ -16,7 +16,9 @@ namespace draughts::ui {
 
 BoardWidget::BoardWidget(QWidget* parent) : QWidget(parent) {
     setMinimumSize(Theme::kMinimumWidgetSide, Theme::kMinimumWidgetSide);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    QSizePolicy sp(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    sp.setHeightForWidth(true);
+    setSizePolicy(sp);
     setAutoFillBackground(false);
     setMouseTracking(true);
     board_.resetStandard();
@@ -37,8 +39,8 @@ void BoardWidget::setController(GameController* c) {
 }
 
 int BoardWidget::computeCellSize(int w, int h) const noexcept {
-    const int avail = std::min(w, h) - 2 * Theme::kBorderMarginPx;
-    return std::max(20, avail / Theme::kBoardSize);
+    // Fill the widget exactly: no outer border margin.
+    return std::max(20, std::min(w, h) / Theme::kBoardSize);
 }
 
 QPoint BoardWidget::boardOrigin(int w, int h, int cell) const noexcept {
@@ -78,10 +80,8 @@ void BoardWidget::drawSurface(QPainter& p, int cell,
 {
     const int boardPx = cell * Theme::kBoardSize;
 
-    p.setPen(Qt::NoPen);
-    p.setBrush(Theme::boardShadow());
-    p.drawRoundedRect(QRect(origin.x() - 8, origin.y() - 8,
-                            boardPx + 16, boardPx + 16), 10, 10);
+    // Draw the grid without any outer shadow or backdrop; the widget's
+    // own rectangle is now exactly the size of the board.
 
     for (int row = 0; row < Theme::kBoardSize; ++row) {
         for (int col = 0; col < Theme::kBoardSize; ++col) {
@@ -205,7 +205,6 @@ void BoardWidget::drawPiecesAnimated(QPainter& p, int cell,
 void BoardWidget::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.fillRect(rect(), Theme::boardBackground());
 
     const int    cell   = computeCellSize(width(), height());
     const QPoint origin = boardOrigin   (width(), height(), cell);

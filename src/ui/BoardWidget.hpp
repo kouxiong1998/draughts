@@ -31,7 +31,15 @@ public:
     [[nodiscard]] bool isRotated() const noexcept { return rotated_; }
     void setRotated(bool r) { rotated_ = r; update(); }
 
-    [[nodiscard]] QSize sizeHint() const override { return {640, 640}; }
+    [[nodiscard]] QSize sizeHint()       const override { return {640, 640}; }
+    [[nodiscard]] QSize minimumSizeHint() const override { return {300, 300}; }
+
+    // Always render as a square: height tracks width. Combined with the
+    // QSizePolicy below, this keeps the widget's bounding box identical
+    // to the drawn board, so anything placed below it sits directly
+    // under the board rather than under empty margin space.
+    [[nodiscard]] bool hasHeightForWidth() const override { return true; }
+    [[nodiscard]] int  heightForWidth(int w) const override { return w; }
 
 protected:
     void paintEvent(QPaintEvent* event) override;

@@ -6,7 +6,9 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QRadioButton>
 #include <QVBoxLayout>
 
@@ -84,14 +86,18 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     note->setStyleSheet("color: #888; margin-top: 6px;");
     root->addWidget(note);
 
-    auto* buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    root->addWidget(buttons);
+    // ?? Button row: Cancel on the left, OK on the right ????????????????????
+    auto* buttons = new QHBoxLayout();
+    auto* cancelBtn = new QPushButton("Cancel", this);
+    auto* okBtn     = new QPushButton("OK",     this);
+    okBtn->setDefault(true);
+    buttons->addStretch(1);
+    buttons->addWidget(cancelBtn);
+    buttons->addWidget(okBtn);
+    root->addLayout(buttons);
 
-    connect(buttons, &QDialogButtonBox::accepted,
-            this, &SettingsDialog::onAccepted);
-    connect(buttons, &QDialogButtonBox::rejected,
-            this, &QDialog::reject);
+    connect(okBtn,     &QPushButton::clicked, this, &SettingsDialog::onAccepted);
+    connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 }
 
 void SettingsDialog::onAccepted() {

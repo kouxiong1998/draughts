@@ -26,6 +26,8 @@ void Settings::load() {
     const int pc = s.value("rules/playerColor", 1).toInt();
     playerColor_ = pc ? core::Color::Yellow : core::Color::Red;
 
+    lastGameMode_ = s.value("mode/last", 0).toInt();
+
     loading_ = false;
 }
 
@@ -39,6 +41,7 @@ void Settings::save() {
                nextFirst_ == core::Color::Yellow ? 1 : 0);
     s.setValue("rules/playerColor",
                playerColor_ == core::Color::Yellow ? 1 : 0);
+    s.setValue("mode/last", lastGameMode_);
     s.sync();
 }
 
@@ -69,6 +72,13 @@ void Settings::setNextFirstPlayer(core::Color c) {
 void Settings::setPlayerColor(core::Color c) {
     if (playerColor_ == c) return;
     playerColor_ = c; save();
+    if (!loading_) emit changed();
+}
+
+void Settings::setLastGameMode(int m) {
+    const int v = (m == 1) ? 1 : 0;
+    if (lastGameMode_ == v) return;
+    lastGameMode_ = v; save();
     if (!loading_) emit changed();
 }
 

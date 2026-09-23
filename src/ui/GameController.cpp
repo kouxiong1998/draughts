@@ -1,6 +1,7 @@
 #include "GameController.hpp"
 #include "Settings.hpp"
 #include "core/MoveGenerator.hpp"
+#include "ai/Evaluator.hpp"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -14,7 +15,6 @@ namespace draughts::ui {
 
 namespace {
 
-/// Locate data/opening_book.txt by searching upward from the exe dir.
 QString findBookFile() {
     QDir d(QCoreApplication::applicationDirPath());
     for (int i = 0; i < 6; ++i) {
@@ -25,12 +25,10 @@ QString findBookFile() {
     return {};
 }
 
-/// Ponder budget. The ponder search runs during the human's turn and is
-/// cancelled the moment the human moves. The budget is effectively
-/// unbounded: 10 minutes is far longer than any human will think, and
-/// the search stops early on its own when it reaches max depth.
 constexpr auto kPonderSoft = std::chrono::milliseconds(600000);
 constexpr auto kPonderHard = std::chrono::milliseconds(660000);
+
+constexpr int kClockTickMs = 200;
 
 } // namespace
 
@@ -48,8 +46,6 @@ GameController::GameController(QObject* parent) : QObject(parent) {
                                 s.score,
                                 static_cast<qint64>(s.elapsed.count()));
             } else {
-                // Silent ponder search ? show it distinctly so the user
-                // can see the AI thinking on their turn.
                 emit ponderProgress(s.depth,
                                     static_cast<quint64>(s.nodes),
                                     s.score,
@@ -61,6 +57,14 @@ GameController::GameController(QObject* parent) : QObject(parent) {
         QMetaObject::invokeMethod(this, [this, mv]{
             onAISearchDone(mv);
         }, Qt::QueuedConnection);
+    });
+
+    clockTimer_ = new QTimer(this);
+    clockTimer_->setInterval(kClockTickMs);
+    connect(clockTimer_, &QTimer::timeout, this, [this]{
+        commitCurrentSlice();
+        emit timeChanged(static_cast<quint64>(elapsedRedMs_),
+                         static_cast<quint64>(elapsedYellowMs_));
     });
 
     newGame();
@@ -80,6 +84,45 @@ void GameController::clearSelection() {
     selected_.reset();
     selectionMoves_.clear();
 }
+
+// ?? Clock helpers ??????????????????????????????????????????????????????????
+
+void GameController::resetClocks() {
+    elapsedRedMs_    = 0;
+    elapsedYellowMs_ = 0;
+    clockSide_       = engine_.sideToMove();
+    clockRunning_    = false;
+    clockTimer_->stop();
+    emit timeChanged(0, 0);
+}
+
+void GameController::startClockFor(core::Color side) {
+    clockSide_      = side;
+    clockTurnStart_ = std::chrono::steady_clock::now();
+    clockRunning_   = true;
+    if (!clockTimer_->isActive()) clockTimer_->start();
+}
+
+void GameController::stopClock() {
+    if (clockRunning_) commitCurrentSlice();
+    clockRunning_ = false;
+    clockTimer_->stop();
+}
+
+void GameController::commitCurrentSlice() {
+    if (!clockRunning_) return;
+
+    const auto now = std::chrono::steady_clock::now();
+    const qint64 sliceMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - clockTurnStart_).count();
+
+    if (clockSide_ == core::Color::Red) elapsedRedMs_ += sliceMs;
+    else                                elapsedYellowMs_ += sliceMs;
+
+    clockTurnStart_ = now;
+}
+
+// ?? State transitions ??????????????????????????????????????????????????????
 
 void GameController::setMode(controller::GameMode m) {
     if (mode_ == m) return;
@@ -106,12 +149,20 @@ void GameController::handleSquareClick(core::Square sq) {
             const core::Move chosen = *it;
             const core::Board preBoard = engine_.board();
 
-            // Cancel any in-flight ponder search before mutating state.
             ai_.stop(std::chrono::milliseconds(1500));
 
             if (engine_.tryApply(chosen)) {
                 const auto& hist = engine_.history();
                 const auto& rec  = hist[engine_.historyCursor() - 1];
+
+                // Hand the clock over to the other side.
+                commitCurrentSlice();
+                if (engine_.result() == core::GameResult::Ongoing) {
+                    startClockFor(engine_.sideToMove());
+                } else {
+                    stopClock();
+                }
+
                 clearSelection();
                 emit moveApplied(rec, preBoard);
                 emit changed();
@@ -147,6 +198,8 @@ void GameController::newGame() {
     const auto& st = Settings::instance();
     engine_.newGame(st.nextRuleSet(), st.nextFirstPlayer());
     clearSelection();
+    resetClocks();
+    startClockFor(engine_.sideToMove());
     emit changed();
     maybeTriggerAI();
 }
@@ -164,6 +217,12 @@ void GameController::undo() {
     }
     engine_.undo();
     clearSelection();
+    commitCurrentSlice();
+    if (engine_.result() == core::GameResult::Ongoing) {
+        startClockFor(engine_.sideToMove());
+    } else {
+        stopClock();
+    }
     emit changed();
     maybeTriggerAI();
 }
@@ -180,6 +239,12 @@ void GameController::redo() {
         const auto& hist = engine_.history();
         const auto& rec  = hist[engine_.historyCursor() - 1];
         clearSelection();
+        commitCurrentSlice();
+        if (engine_.result() == core::GameResult::Ongoing) {
+            startClockFor(engine_.sideToMove());
+        } else {
+            stopClock();
+        }
         emit moveApplied(rec, preBoard);
         emit changed();
         maybeTriggerAI();
@@ -192,7 +257,51 @@ void GameController::resign() {
     emit aiThinkingChanged(false);
     engine_.resign();
     clearSelection();
+    stopClock();
     emit changed();
+}
+
+void GameController::offerDraw() {
+    if (engine_.result() != core::GameResult::Ongoing) return;
+
+    // Human vs Human: the offer is accepted immediately, since the same
+    // person is operating both sides at the keyboard.
+    if (mode_ != controller::GameMode::HumanVsAI) {
+        ai_.stop(std::chrono::milliseconds(1500));
+        aiThinking_ = false;
+        emit aiThinkingChanged(false);
+        engine_.agreeDraw();
+        clearSelection();
+        stopClock();
+        emit changed();
+        emit drawOffered(true, QStringLiteral("Draw agreed."));
+        return;
+    }
+
+    // Human vs AI: the AI evaluates the position with the static evaluator.
+    // Accept unless the AI is clearly ahead.
+    const int evalForMover = ai::evaluate(engine_.board(), engine_.sideToMove());
+    const int evalForAI = (engine_.sideToMove() == aiColor())
+                            ? evalForMover
+                            : -evalForMover;
+
+    constexpr int kDeclineThresholdCp = 50;   // half a man
+
+    if (evalForAI > kDeclineThresholdCp) {
+        emit drawOffered(false,
+            QStringLiteral("AI declines the draw - it thinks it is ahead."));
+        // Ponder continues; nothing else to do.
+        return;
+    }
+
+    ai_.stop(std::chrono::milliseconds(1500));
+    aiThinking_ = false;
+    emit aiThinkingChanged(false);
+    engine_.agreeDraw();
+    clearSelection();
+    stopClock();
+    emit changed();
+    emit drawOffered(true, QStringLiteral("AI accepts the draw."));
 }
 
 void GameController::adoptEngine(core::GameEngine&& newEngine) {
@@ -201,6 +310,10 @@ void GameController::adoptEngine(core::GameEngine&& newEngine) {
     emit aiThinkingChanged(false);
     engine_ = std::move(newEngine);
     clearSelection();
+    resetClocks();
+    if (engine_.result() == core::GameResult::Ongoing) {
+        startClockFor(engine_.sideToMove());
+    }
     emit changed();
     maybeTriggerAI();
 }
@@ -240,8 +353,6 @@ void GameController::launchAISearch() {
 }
 
 void GameController::startPonder() {
-    // Ponder only in AI mode, only when it's the human's turn, only when
-    // the game is ongoing. Silently warms the TT while the human thinks.
     if (mode_ != controller::GameMode::HumanVsAI) return;
     if (engine_.result() != core::GameResult::Ongoing) return;
     if (isAITurn()) return;
@@ -261,10 +372,16 @@ void GameController::playMoveFromAI(const core::Move& move) {
 
     const auto& hist = engine_.history();
     const auto& rec  = hist[engine_.historyCursor() - 1];
+
+    commitCurrentSlice();
+    if (engine_.result() == core::GameResult::Ongoing) {
+        startClockFor(engine_.sideToMove());
+    } else {
+        stopClock();
+    }
+
     emit moveApplied(rec, preBoard);
     emit changed();
-
-    // After the AI moves, it's the human's turn ? start pondering.
     startPonder();
 }
 
@@ -279,6 +396,14 @@ void GameController::onAISearchDone(const core::Move& move) {
     if (engine_.tryApply(move)) {
         const auto& hist = engine_.history();
         const auto& rec  = hist[engine_.historyCursor() - 1];
+
+        commitCurrentSlice();
+        if (engine_.result() == core::GameResult::Ongoing) {
+            startClockFor(engine_.sideToMove());
+        } else {
+            stopClock();
+        }
+
         emit moveApplied(rec, preBoard);
         emit changed();
         startPonder();
