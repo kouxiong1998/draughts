@@ -14,8 +14,11 @@ add_executable(draughts_tests
     test_flying_kings.cpp
     test_zobrist.cpp
     test_perft.cpp
+    test_evaluator.cpp
+    test_transposition.cpp
+    test_search.cpp
 )
-target_link_libraries(draughts_tests PRIVATE draughts_core Catch2::Catch2WithMain)
+target_link_libraries(draughts_tests PRIVATE draughts_core draughts_ai Catch2::Catch2WithMain)
 
 include(Catch)
 catch_discover_tests(draughts_tests)
