@@ -288,32 +288,68 @@ SearchStats Search::think(const core::Board& board,
     // honest.
     const int startDepth = 1 + std::min(threadId, 3);
 
+    int  prevScore = 0;
+    bool firstIter = true;
+
     for (int depth = startDepth; depth <= 64; ++depth) {
-        int localBest = -kMateScore - 1;
+        // Aspiration window: after the first iteration, search with a
+        // narrow window around the previous iteration's score. If the
+        // search fails outside it, widen and retry.
+        constexpr int kAspirationWindow = 50;
+
+        int aspAlpha = -kMateScore - 1;
+        int aspBeta  =  kMateScore + 1;
+        if (!firstIter && std::abs(prevScore) < kMateScore - 100) {
+            aspAlpha = prevScore - kAspirationWindow;
+            aspBeta  = prevScore + kAspirationWindow;
+        }
+
+        int       localBest     = -kMateScore - 1;
         core::Move localBestMove = rootMoves[0];
-        bool aborted = false;
+        bool      aborted       = false;
 
-        ScoredMoveList scored{};
-        std::size_t    count = 0;
-        scoreAndSort(scored, count, rootMoves, bestMove, 0);
+        // Retry loop: re-search with a wider window if the score escapes.
+        for (int attempt = 0; attempt < 5; ++attempt) {
+            localBest     = -kMateScore - 1;
+            localBestMove = rootMoves[0];
 
-        int rootAlpha = -kMateScore - 1;
-        const int rootBeta = kMateScore + 1;
+            ScoredMoveList scored{};
+            std::size_t    count = 0;
+            scoreAndSort(scored, count, rootMoves, bestMove, 0);
 
-        for (std::size_t i = 0; i < count; ++i) {
-            const core::Move& m = scored[i].move;
-            core::Board next = board;
-            applyMoveInPlace(next, m);
+            int       rootAlpha = aspAlpha;
+            const int rootBeta  = aspBeta;
+            bool      failLow   = true;
 
-            const int score = -negamax(next, core::opposite(side), rules,
-                                       depth - 1, -rootBeta, -rootAlpha, 1);
-            if (timeMgr_.shouldStop()) { aborted = true; break; }
+            for (std::size_t i = 0; i < count; ++i) {
+                const core::Move& m = scored[i].move;
+                core::Board next = board;
+                applyMoveInPlace(next, m);
 
-            if (score > localBest) {
-                localBest     = score;
-                localBestMove = m;
+                const int score = -negamax(next, core::opposite(side), rules,
+                                           depth - 1, -rootBeta, -rootAlpha, 1);
+                if (timeMgr_.shouldStop()) { aborted = true; break; }
+
+                if (score > localBest) {
+                    localBest     = score;
+                    localBestMove = m;
+                }
+                if (localBest > rootAlpha) {
+                    rootAlpha = localBest;
+                    failLow   = false;
+                }
             }
-            if (localBest > rootAlpha) rootAlpha = localBest;
+
+            if (aborted) break;
+
+            // Success: score landed inside the window.
+            if (!failLow && localBest < aspBeta) break;
+
+            // Failed high: widen beta.
+            if (localBest >= aspBeta) aspBeta = kMateScore + 1;
+
+            // Failed low: widen alpha.
+            if (failLow) aspAlpha = -kMateScore - 1;
         }
 
         if (aborted) break;
@@ -321,6 +357,8 @@ SearchStats Search::think(const core::Board& board,
         bestMove      = localBestMove;
         bestScore     = localBest;
         lastFullDepth = depth;
+        prevScore     = localBest;
+        firstIter     = false;
 
         stats.depth     = depth;
         stats.nodes     = nodes_;
