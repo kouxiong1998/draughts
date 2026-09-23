@@ -76,7 +76,7 @@ private:
                    TimeBudget budget, int threadId, bool silent);
     void onWorkerProgress(const SearchStats& s, int threadId);
 
-    TranspositionTable tt_{1u << 22};  // 4M entries, ~128 MB
+    TranspositionTable tt_{1u << 24};  // 16M entries, ~400 MB
     EndgameTablebase   tb_;            // solved in-memory cache, grows on demand
 
     std::jthread               worker_;

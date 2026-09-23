@@ -56,6 +56,7 @@ draughts_apply_warnings(draughts_core)
 # ?????????????????????????????????????????????????????????????????????????????
 add_library(draughts_ai STATIC
     src/ai/Evaluator.cpp
+    src/ai/PST.cpp
     src/ai/OpeningBook.cpp
     src/ai/EndgameTablebase.cpp
     src/ai/TranspositionTable.cpp
@@ -158,3 +159,12 @@ if(DRAUGHTS_BUILD_UI)
     set_target_properties(ai_ui_sim PROPERTIES WIN32_EXECUTABLE FALSE)
     draughts_apply_warnings(ai_ui_sim)
 endif()
+
+# ---- Self-play generator (for PST tuning) ------------------------------------
+add_executable(selfplay_gen tools/selfplay_gen.cpp)
+target_link_libraries(selfplay_gen PRIVATE draughts_ai)
+draughts_apply_warnings(selfplay_gen)
+# ---- PST tuner (Texel-style gradient descent) --------------------------------
+add_executable(tuner tools/tuner.cpp)
+target_link_libraries(tuner PRIVATE draughts_ai)
+draughts_apply_warnings(tuner)

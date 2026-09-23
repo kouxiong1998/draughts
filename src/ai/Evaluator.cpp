@@ -7,6 +7,8 @@ namespace draughts::ai {
 namespace {
 
 int materialAndPosition(const core::Board& b) noexcept {
+    const auto& w = pst::active();
+
     int score = 0;
 
     const core::Bitboard redMen    = b.menMask(core::Color::Red);
@@ -22,18 +24,17 @@ int materialAndPosition(const core::Board& b) noexcept {
         }
     };
 
-    // Red pieces
-    scan(redMen,   [&](core::Square sq){ score +=  kManValue  + pst::MAN_RED[sq]; });
-    scan(redKings, [&](core::Square sq){ score +=  kKingValue + pst::KING[sq];   });
+    scan(redMen,   [&](core::Square sq){ score +=  kManValue  + w.men[sq];   });
+    scan(redKings, [&](core::Square sq){ score +=  kKingValue + w.kings[sq]; });
 
-    // Yellow pieces ? mirror square for PST
-    scan(yellMen,  [&](core::Square sq){
+    // Yellow pieces ? mirror square for PST lookup.
+    scan(yellMen, [&](core::Square sq){
         const auto m = core::bc::mirrorSquare(sq);
-        score -= kManValue + pst::MAN_RED[m];
+        score -= kManValue + w.men[m];
     });
-    scan(yellKings,[&](core::Square sq){
+    scan(yellKings, [&](core::Square sq){
         const auto m = core::bc::mirrorSquare(sq);
-        score -= kKingValue + pst::KING[m];
+        score -= kKingValue + w.kings[m];
     });
 
     return score;

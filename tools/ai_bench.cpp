@@ -17,7 +17,7 @@ int main() {
     core::Board board; board.resetStandard();
 
     ai::AIEngine engine;
-    engine.setThreadCount(4);
+    // engine.setThreadCount(4);  // let AIEngine use the default (70% of cores)
 
     std::atomic<bool> done{false};
 
@@ -43,7 +43,7 @@ int main() {
         done.store(true);
     });
 
-    std::printf("Starting search on opening position, 5 s budget, 4 threads...\n\n");
+    std::printf("Starting search on opening position, 5 s budget, all available threads...\n\n");
     std::fflush(stdout);
     engine.think(board, core::Color::Red, core::RuleSet::InternationalMaxCapture);
 

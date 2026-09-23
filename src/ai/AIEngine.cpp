@@ -1,5 +1,6 @@
 #include "AIEngine.hpp"
 #include "core/MoveGenerator.hpp"
+#include "PST.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -9,7 +10,7 @@ namespace draughts::ai {
 
 AIEngine::AIEngine() {
     const unsigned hw = std::thread::hardware_concurrency();
-    threadCount_ = std::clamp(static_cast<int>(hw == 0 ? 2 : hw), 2, 8);
+    threadCount_ = std::clamp(static_cast<int>(hw == 0 ? 2u : hw) * 7 / 10, 2, 32);
 }
 
 AIEngine::~AIEngine() {
@@ -48,6 +49,11 @@ void AIEngine::think(const core::Board& board,
                      bool               silent)
 {
     const std::uint64_t myGen = ++generation_;
+
+    // Select the correct PST weight set for this rule variant before any
+    // evaluation or search runs. Called on every think() so a rule change
+    // takes effect on the very next move.
+    pst::setActive(rules);
 
     stopFlag_.store(true, std::memory_order_relaxed);
     if (worker_.joinable()) worker_.join();
