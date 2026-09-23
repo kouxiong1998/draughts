@@ -31,7 +31,7 @@ QString colorName(core::Color c) {
 SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(8);
+    layout->setSpacing(6);
 
     auto boldLabel = [this]() {
         auto* l = new QLabel(this);
@@ -45,15 +45,26 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     moveLabel_    = new QLabel(this);
     captureLabel_ = new QLabel(this);
     resultLabel_  = boldLabel();
-    aiStatusLabel_= new QLabel(this);
-    aiStatusLabel_->setStyleSheet("color: #888; font-size: 10px;");
-    aiStatusLabel_->setWordWrap(true);
+
+    bookLabel_ = new QLabel(this);
+    bookLabel_->setStyleSheet("color: #ffffff; font-size: 10px;");
+    bookLabel_->setWordWrap(false);
+
+    aiStatusLabel_ = new QLabel(this);
+    aiStatusLabel_->setStyleSheet("color: #ffffff; font-size: 10px;");
+    aiStatusLabel_->setWordWrap(false);
+
+    ponderLabel_ = new QLabel(this);
+    ponderLabel_->setStyleSheet("color: #ffffff; font-size: 10px;");
+    ponderLabel_->setWordWrap(false);
 
     layout->addWidget(turnLabel_);
     layout->addWidget(moveLabel_);
     layout->addWidget(captureLabel_);
     layout->addWidget(resultLabel_);
+    layout->addWidget(bookLabel_);
     layout->addWidget(aiStatusLabel_);
+    layout->addWidget(ponderLabel_);
     layout->addSpacing(6);
 
     auto* modeBox = new QGroupBox("Mode", this);
@@ -104,6 +115,9 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     });
 
     connect(newGameBtn_, &QPushButton::clicked, this, [this]{
+        bookLabel_->clear();
+        aiStatusLabel_->clear();
+        ponderLabel_->clear();
         if (controller_) controller_->newGame();
         if (board_) {
             const auto pc = Settings::instance().playerColor();
@@ -114,6 +128,9 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     connect(settingsBtn_, &QPushButton::clicked, this, [this]{
         SettingsDialog dlg(this);
         connect(&dlg, &SettingsDialog::restartRequested, this, [this]{
+            bookLabel_->clear();
+            aiStatusLabel_->clear();
+            ponderLabel_->clear();
             if (controller_) controller_->newGame();
             if (board_) {
                 const auto pc = Settings::instance().playerColor();
@@ -149,10 +166,10 @@ void SidePanel::setController(GameController* c, BoardWidget* b) {
                 this, &SidePanel::onAIThinkingChanged);
         connect(controller_, &GameController::aiProgress,
                 this, &SidePanel::onAIProgress);
+        connect(controller_, &GameController::ponderProgress,
+                this, &SidePanel::onPonderProgress);
         connect(controller_, &GameController::openingBookPlayed,
-                this, [this]{
-                    aiStatusLabel_->setText(QStringLiteral("Opening book"));
-                });
+                this, &SidePanel::onOpeningBookPlayed);
     }
     refresh();
 }
@@ -163,10 +180,15 @@ void SidePanel::refresh() {
     const auto side = controller_->sideToMove();
     const auto res  = controller_->result();
 
-    turnLabel_->setText(QString("Turn: <span style='color:%1'>%2</span>")
-        .arg(side == core::Color::Red ? "#ff4040" : "#e0d000")
-        .arg(colorName(side)));
-    turnLabel_->setTextFormat(Qt::RichText);
+    // Hide turn indicator once the game is decided.
+    if (res == core::GameResult::Ongoing) {
+        turnLabel_->setText(QString("Turn: <span style='color:%1'>%2</span>")
+            .arg(side == core::Color::Red ? "#ff4040" : "#e0d000")
+            .arg(colorName(side)));
+        turnLabel_->setTextFormat(Qt::RichText);
+    } else {
+        turnLabel_->clear();
+    }
 
     moveLabel_->setText(QString("Move: %1").arg(controller_->ply() / 2 + 1));
 
@@ -195,16 +217,30 @@ void SidePanel::refresh() {
     const bool lock = controller_->aiThinking();
     modeHumanHuman_->setEnabled(!lock);
     modeHumanAI_->setEnabled(!lock);
+
+
 }
 
 void SidePanel::onAIThinkingChanged(bool thinking) {
-    if (thinking) aiStatusLabel_->setText("AI thinking...");
+    if (thinking) {
+        aiStatusLabel_->setText(QStringLiteral("AI thinking..."));
+    }
     refresh();
 }
 
 void SidePanel::onAIProgress(int depth, quint64 nodes, int score, qint64 ms) {
     aiStatusLabel_->setText(
         QString("depth %1 | %2 kn | score %3 | %4 ms")
+            .arg(depth).arg(nodes / 1000).arg(score).arg(ms));
+}
+
+void SidePanel::onOpeningBookPlayed() {
+    bookLabel_->setText(QStringLiteral("Opening book"));
+}
+
+void SidePanel::onPonderProgress(int depth, quint64 nodes, int score, qint64 ms) {
+    ponderLabel_->setText(
+        QString("Pondering...  depth %1 | %2 kn | score %3 | %4 ms")
             .arg(depth).arg(nodes / 1000).arg(score).arg(ms));
 }
 
@@ -236,6 +272,9 @@ void SidePanel::onLoadGame() {
         return;
     }
 
+    bookLabel_->clear();
+    aiStatusLabel_->clear();
+    ponderLabel_->clear();
     controller_->adoptEngine(std::move(loaded));
     Settings::instance().setPlayerColor(savedPlayerColor);
     if (board_) {

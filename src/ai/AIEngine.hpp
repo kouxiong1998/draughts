@@ -7,6 +7,11 @@
 /// An optional OpeningBook can be attached; if the current position is in
 /// the book, `think()` returns the book move immediately (via the done
 /// callback) without spawning any worker threads.
+///
+/// A "silent" think (`silent = true`) runs the same search but suppresses
+/// both progress and done callbacks. Used for pondering: the engine warms
+/// the transposition table in the background while it is the opponent's
+/// turn, then a real (non-silent) think benefits from the warmer TT.
 
 #include "OpeningBook.hpp"
 #include "Search.hpp"
@@ -43,16 +48,19 @@ public:
     void setThreadCount(int n);
     [[nodiscard]] int threadCount() const noexcept { return threadCount_; }
 
-    /// Attach (or detach with nullptr) an opening book. The engine does not
-    /// take ownership; the book must outlive the engine or be cleared first.
+    /// Attach (or detach with nullptr) an opening book.
     void setOpeningBook(const OpeningBook* book) noexcept { book_ = book; }
     [[nodiscard]] const OpeningBook* openingBook() const noexcept { return book_; }
 
     /// Launch a search. Non-blocking; result via done callback.
+    /// When `silent` is true, neither the progress nor the done callback
+    /// is fired. This is how ponder warming works: the search populates
+    /// the shared TT but produces no visible output.
     void think(const core::Board& board,
                core::Color        side,
                core::RuleSet      rules,
-               TimeBudget         budget = {});
+               TimeBudget         budget = {},
+               bool               silent = false);
 
     bool stop(std::chrono::milliseconds wait = std::chrono::milliseconds(500));
 
@@ -62,21 +70,21 @@ public:
 
 private:
     void runSMP(core::Board board, core::Color side, core::RuleSet rules,
-                TimeBudget budget, std::uint64_t generation);
+                TimeBudget budget, std::uint64_t generation, bool silent);
     void runWorker(core::Board board, core::Color side, core::RuleSet rules,
-                   TimeBudget budget, int threadId);
+                   TimeBudget budget, int threadId, bool silent);
     void onWorkerProgress(const SearchStats& s, int threadId);
 
-    TranspositionTable tt_{1u << 20};
+    TranspositionTable tt_{1u << 22};  // 4M entries, ~128 MB
 
-    std::jthread              worker_;
-    std::atomic<bool>         stopFlag_{false};
-    std::atomic<bool>         thinking_{false};
+    std::jthread               worker_;
+    std::atomic<bool>          stopFlag_{false};
+    std::atomic<bool>          thinking_{false};
     std::atomic<std::uint64_t> generation_{0};
-    int                       threadCount_{4};
+    int                        threadCount_{4};
 
-    const OpeningBook*        book_{nullptr};
-    std::mt19937_64           bookRng_{std::random_device{}()};
+    const OpeningBook*         book_{nullptr};
+    std::mt19937_64            bookRng_{std::random_device{}()};
 
     std::mutex cbMutex_;
     ProgressFn progressCb_;

@@ -25,6 +25,13 @@ QString findBookFile() {
     return {};
 }
 
+/// Ponder budget. The ponder search runs during the human's turn and is
+/// cancelled the moment the human moves. The budget is effectively
+/// unbounded: 10 minutes is far longer than any human will think, and
+/// the search stops early on its own when it reaches max depth.
+constexpr auto kPonderSoft = std::chrono::milliseconds(600000);
+constexpr auto kPonderHard = std::chrono::milliseconds(660000);
+
 } // namespace
 
 GameController::GameController(QObject* parent) : QObject(parent) {
@@ -35,10 +42,19 @@ GameController::GameController(QObject* parent) : QObject(parent) {
 
     ai_.setProgressCallback([this](const ai::SearchStats& s) {
         QMetaObject::invokeMethod(this, [this, s]{
-            emit aiProgress(s.depth,
-                            static_cast<quint64>(s.nodes),
-                            s.score,
-                            static_cast<qint64>(s.elapsed.count()));
+            if (isAITurn()) {
+                emit aiProgress(s.depth,
+                                static_cast<quint64>(s.nodes),
+                                s.score,
+                                static_cast<qint64>(s.elapsed.count()));
+            } else {
+                // Silent ponder search ? show it distinctly so the user
+                // can see the AI thinking on their turn.
+                emit ponderProgress(s.depth,
+                                    static_cast<quint64>(s.nodes),
+                                    s.score,
+                                    static_cast<qint64>(s.elapsed.count()));
+            }
         }, Qt::QueuedConnection);
     });
     ai_.setDoneCallback([this](const core::Move& mv, const ai::SearchStats&) {
@@ -57,10 +73,7 @@ GameController::~GameController() {
 void GameController::loadOpeningBook() {
     const QString path = findBookFile();
     if (path.isEmpty()) return;
-    const bool ok = book_.loadFromFile(path.toStdString());
-    if (ok) {
-        // Book loaded; nothing to do - empty books are handled gracefully.
-    }
+    (void)book_.loadFromFile(path.toStdString());
 }
 
 void GameController::clearSelection() {
@@ -92,6 +105,10 @@ void GameController::handleSquareClick(core::Square sq) {
         if (it != selectionMoves_.end()) {
             const core::Move chosen = *it;
             const core::Board preBoard = engine_.board();
+
+            // Cancel any in-flight ponder search before mutating state.
+            ai_.stop(std::chrono::milliseconds(1500));
+
             if (engine_.tryApply(chosen)) {
                 const auto& hist = engine_.history();
                 const auto& rec  = hist[engine_.historyCursor() - 1];
@@ -202,10 +219,6 @@ void GameController::launchAISearch() {
                                                 engine_.rules());
     if (moves.empty()) return;
 
-    // Opening book check: if we have a recorded move for this exact
-    // position, play it instantly. This gives opening variety without
-    // running the search, and mirrors the well-known behaviour of every
-    // serious engine.
     if (!book_.empty()) {
         std::mt19937_64 rng(std::random_device{}());
         const auto bookMove = book_.pickMove(engine_.board(),
@@ -226,6 +239,22 @@ void GameController::launchAISearch() {
               ai::TimeBudget{});
 }
 
+void GameController::startPonder() {
+    // Ponder only in AI mode, only when it's the human's turn, only when
+    // the game is ongoing. Silently warms the TT while the human thinks.
+    if (mode_ != controller::GameMode::HumanVsAI) return;
+    if (engine_.result() != core::GameResult::Ongoing) return;
+    if (isAITurn()) return;
+
+    ai::TimeBudget pb;
+    pb.soft    = kPonderSoft;
+    pb.hard    = kPonderHard;
+    pb.minimum = std::chrono::milliseconds(100);
+
+    ai_.think(engine_.board(), engine_.sideToMove(), engine_.rules(), pb,
+              /*silent=*/true);
+}
+
 void GameController::playMoveFromAI(const core::Move& move) {
     const core::Board preBoard = engine_.board();
     if (!engine_.tryApply(move)) return;
@@ -234,6 +263,9 @@ void GameController::playMoveFromAI(const core::Move& move) {
     const auto& rec  = hist[engine_.historyCursor() - 1];
     emit moveApplied(rec, preBoard);
     emit changed();
+
+    // After the AI moves, it's the human's turn ? start pondering.
+    startPonder();
 }
 
 void GameController::onAISearchDone(const core::Move& move) {
@@ -249,6 +281,7 @@ void GameController::onAISearchDone(const core::Move& move) {
         const auto& rec  = hist[engine_.historyCursor() - 1];
         emit moveApplied(rec, preBoard);
         emit changed();
+        startPonder();
     } else {
         const auto moves = core::generateLegalMoves(engine_.board(),
                                                     engine_.sideToMove(),

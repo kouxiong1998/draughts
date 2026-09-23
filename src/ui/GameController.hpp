@@ -3,6 +3,12 @@
 /// @brief MVC glue. Owns the core::GameEngine, an AIEngine, and an opening
 ///        book. Translates raw square clicks into engine calls, schedules
 ///        AI moves on a worker thread, and consults the book before searching.
+///
+/// After the AI plays a move, it immediately starts a silent ponder search
+/// on the position the human now faces. The ponder search warms the shared
+/// transposition table so the AI's next real search reaches greater depth
+/// in the same 5-second budget. The ponder search is cancelled the moment
+/// the human makes a move.
 
 #include "core/GameEngine.hpp"
 #include "core/Types.hpp"
@@ -78,7 +84,7 @@ signals:
     void moveApplied(const core::MoveRecord& rec, const core::Board& preBoard);
     void aiThinkingChanged(bool thinking);
     void aiProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
-    /// Fired when the AI plays a move straight from the opening book.
+    void ponderProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
     void openingBookPlayed();
 
 private:
@@ -97,6 +103,7 @@ private:
     void loadOpeningBook();
     void maybeTriggerAI();
     void launchAISearch();
+    void startPonder();
     void onAISearchDone(const core::Move& move);
     void playMoveFromAI(const core::Move& move);
 };

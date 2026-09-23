@@ -44,7 +44,8 @@ bool AIEngine::stop(std::chrono::milliseconds wait) {
 void AIEngine::think(const core::Board& board,
                      core::Color        side,
                      core::RuleSet      rules,
-                     TimeBudget         budget)
+                     TimeBudget         budget,
+                     bool               silent)
 {
     const std::uint64_t myGen = ++generation_;
 
@@ -60,11 +61,10 @@ void AIEngine::think(const core::Board& board,
 
     stopFlag_.store(false, std::memory_order_relaxed);
 
-    // ?? Opening book fast path ?????????????????????????????????????????????
-    // If the book knows this position, fire the done callback on a tiny
-    // background thread (so the caller's contract is unchanged: result
-    // always arrives via callback, never synchronously).
-    if (book_ && !book_->empty()) {
+    // Opening book fast path: only applies to non-silent (real) searches.
+    // A ponder search never uses the book because the book has nothing to
+    // add to TT warming, and we do not want to shortcut the AI's real move.
+    if (!silent && book_ && !book_->empty()) {
         auto bookMove = book_->pickMove(board, side, rules, bookRng_);
         if (bookMove) {
             SearchStats s;
@@ -75,8 +75,6 @@ void AIEngine::think(const core::Board& board,
 
             worker_ = std::jthread([this, s, myGen]() {
                 thinking_.store(true, std::memory_order_relaxed);
-                // Yield once so the caller has a chance to observe the
-                // thinking state if it polls immediately.
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 thinking_.store(false, std::memory_order_relaxed);
 
@@ -93,13 +91,14 @@ void AIEngine::think(const core::Board& board,
         }
     }
 
-    worker_ = std::jthread([this, board, side, rules, budget, myGen]() {
-        runSMP(board, side, rules, budget, myGen);
-    });
+    worker_ = std::jthread(
+        [this, board, side, rules, budget, myGen, silent]() {
+            runSMP(board, side, rules, budget, myGen, silent);
+        });
 }
 
 void AIEngine::runSMP(core::Board board, core::Color side, core::RuleSet rules,
-                      TimeBudget budget, std::uint64_t myGen)
+                      TimeBudget budget, std::uint64_t myGen, bool silent)
 {
     thinking_.store(true, std::memory_order_relaxed);
 
@@ -109,8 +108,8 @@ void AIEngine::runSMP(core::Board board, core::Color side, core::RuleSet rules,
         std::vector<std::jthread> workers;
         workers.reserve(static_cast<std::size_t>(n));
         for (int i = 0; i < n; ++i) {
-            workers.emplace_back([this, board, side, rules, budget, i]() {
-                runWorker(board, side, rules, budget, i);
+            workers.emplace_back([this, board, side, rules, budget, i, silent]() {
+                runWorker(board, side, rules, budget, i, silent);
             });
         }
     }
@@ -118,6 +117,10 @@ void AIEngine::runSMP(core::Board board, core::Color side, core::RuleSet rules,
     thinking_.store(false, std::memory_order_relaxed);
 
     if (generation_.load(std::memory_order_relaxed) != myGen) return;
+
+    // A silent search produces no callback output ? its only purpose was
+    // to warm the shared transposition table.
+    if (silent) return;
 
     SearchStats best;
     {
@@ -134,12 +137,14 @@ void AIEngine::runSMP(core::Board board, core::Color side, core::RuleSet rules,
 }
 
 void AIEngine::runWorker(core::Board board, core::Color side, core::RuleSet rules,
-                         TimeBudget budget, int threadId)
+                         TimeBudget budget, int threadId, bool silent)
 {
     try {
         auto search = std::make_unique<Search>(
             &tt_, &stopFlag_,
-            [this, threadId](const SearchStats& s) { onWorkerProgress(s, threadId); });
+            [this, threadId, silent](const SearchStats& s) {
+                onWorkerProgress(s, threadId);
+            });
 
         (void)search->think(board, side, rules, budget, threadId);
     } catch (...) {

@@ -26,6 +26,8 @@ private slots:
     void onCopyNotation();
     void onAIThinkingChanged(bool thinking);
     void onAIProgress(int depth, quint64 nodes, int score, qint64 ms);
+    void onPonderProgress(int depth, quint64 nodes, int score, qint64 ms);
+    void onOpeningBookPlayed();
 
 private:
     GameController* controller_{nullptr};
@@ -35,7 +37,9 @@ private:
     QLabel* moveLabel_{nullptr};
     QLabel* captureLabel_{nullptr};
     QLabel* resultLabel_{nullptr};
-    QLabel* aiStatusLabel_{nullptr};
+    QLabel* bookLabel_{nullptr};       // opening book line (top)
+    QLabel* aiStatusLabel_{nullptr};   // real search line
+    QLabel* ponderLabel_{nullptr};     // ponder search line (bottom)
 
     QRadioButton* modeHumanHuman_{nullptr};
     QRadioButton* modeHumanAI_{nullptr};
