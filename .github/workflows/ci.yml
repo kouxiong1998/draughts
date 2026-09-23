@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  linux-core:
+    name: Linux - core + tests (no GUI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DDRAUGHTS_BUILD_TESTS=ON \
+                -DDRAUGHTS_BUILD_UI=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Run perft CLI (max-capture ON, depth 6)
+        run: ./build/perft --depth 6 --rules on
+
+      - name: Run perft CLI (max-capture OFF, depth 6)
+        run: ./build/perft --depth 6 --rules off
+
+  linux-asan:
+    name: Linux - Debug + ASan/UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-debug \
+                -DCMAKE_BUILD_TYPE=Debug \
+                -DDRAUGHTS_BUILD_TESTS=ON \
+                -DDRAUGHTS_BUILD_UI=OFF \
+                -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+      - name: Build
+        run: cmake --build build-debug --parallel
+
+      - name: Test under sanitizers
+        run: ctest --test-dir build-debug --output-on-failure
+
+  windows-msvc:
+    name: Windows - MSVC (core + tests, no GUI)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.28.x'
+
+      - name: Configure
+        run: |
+          cmake -S . -B build `
+                -G "Visual Studio 17 2022" -A x64 `
+                -DCMAKE_BUILD_TYPE=Release `
+                -DDRAUGHTS_BUILD_TESTS=ON `
+                -DDRAUGHTS_BUILD_UI=OFF
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure

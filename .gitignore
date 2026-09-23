@@ -1,0 +1,45 @@
+# Build trees
+build/
+build-*/
+out/
+cmake-build-*/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.slnx
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
+*.opendb
+*.user
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+compile_commands.json
+
+# Compiled objects / libraries / executables
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# Test artefacts
+Testing/
+*.drgt
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
