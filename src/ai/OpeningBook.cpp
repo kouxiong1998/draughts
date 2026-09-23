@@ -50,11 +50,9 @@ void OpeningBook::loadFromString(const std::string& text) {
     std::istringstream in(text);
     std::string line;
     while (std::getline(in, line)) {
-        // Strip comments.
         const auto hashPos = line.find('#');
         if (hashPos != std::string::npos) line.resize(hashPos);
 
-        // Trim whitespace.
         const auto b = line.find_first_not_of(" \t\r\n");
         if (b == std::string::npos) continue;
         const auto e = line.find_last_not_of(" \t\r\n");
@@ -70,31 +68,52 @@ void OpeningBook::parseAndInsert(const std::string& line) {
     std::vector<std::string> tokens;
     std::string tok;
     while (in >> tok) tokens.push_back(tok);
-    if (tokens.size() < 2) return;   // A single move teaches nothing new.
+    if (tokens.size() < 2) return;
 
-    core::Board board;
-    board.resetStandard();
-    core::Color side = core::Color::Red;
-    constexpr core::RuleSet rules = core::RuleSet::InternationalMaxCapture;
+    // Try each line under 4 combinations:
+    //   2 rule variants x 2 starting sides
+    // The starting side is whichever produces a legal first move for the
+    // line. This lets the book work whether the user has Red or Yellow as
+    // the first player in Settings.
+    bool insertedOnce = false;
+    const core::RuleSet rulesVariants[2] = {
+        core::RuleSet::InternationalMaxCapture,
+        core::RuleSet::InternationalFreeCapture,
+    };
+    const core::Color startingSides[2] = {
+        core::Color::Red,
+        core::Color::Yellow,
+    };
 
-    bool ok = true;
-    for (std::size_t i = 0; i + 1 < tokens.size(); ++i) {
-        const auto mv = core::parseMove(board, side, rules, tokens[i]);
-        if (!mv) { ok = false; break; }
+    for (const core::RuleSet rules : rulesVariants) {
+        for (const core::Color start : startingSides) {
+            core::Board board;
+            board.resetStandard();
+            core::Color side = start;
 
-        const Key key{positionHash(board, side, rules), side, rules};
-        auto& list = table_[key];
-        const bool dup = std::any_of(list.begin(), list.end(),
-            [&](const core::Move& m) {
-                return m.from == mv->from && m.to == mv->to
-                    && m.captured == mv->captured;
-            });
-        if (!dup) list.push_back(*mv);
+            bool ok = true;
+            for (std::size_t i = 0; i + 1 < tokens.size(); ++i) {
+                const auto mv = core::parseMove(board, side, rules, tokens[i]);
+                if (!mv) { ok = false; break; }
 
-        applyMove(board, *mv);
-        side = core::opposite(side);
+                const Key key{positionHash(board, side, rules), side, rules};
+                auto& list = table_[key];
+                const bool dup = std::any_of(list.begin(), list.end(),
+                    [&](const core::Move& m) {
+                        return m.from == mv->from && m.to == mv->to
+                            && m.captured == mv->captured;
+                    });
+                if (!dup) list.push_back(*mv);
+
+                applyMove(board, *mv);
+                side = core::opposite(side);
+            }
+            if (ok && !insertedOnce) {
+                ++lineCount_;
+                insertedOnce = true;
+            }
+        }
     }
-    if (ok) ++lineCount_;
 }
 
 std::optional<core::Move> OpeningBook::pickMove(
@@ -107,8 +126,6 @@ std::optional<core::Move> OpeningBook::pickMove(
     const auto it = table_.find(key);
     if (it == table_.end() || it->second.empty()) return std::nullopt;
 
-    // Cross-check against currently legal moves, in case the book file was
-    // written for a different rule variant.
     const auto legal = core::generateLegalMoves(board, side, rules);
     std::vector<core::Move> choices;
     choices.reserve(it->second.size());
