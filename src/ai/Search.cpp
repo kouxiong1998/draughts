@@ -157,6 +157,29 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
         }
     }
 
+    // ?? Internal Iterative Deepening (IID) ????????????????????????????????
+    // If the TT gave no move AND we're searching at a meaningful depth,
+    // do a shallow search first to find a likely-best move. This move is
+    // then tried first in the main loop, greatly improving move ordering
+    // in quiet positions.
+    if (depth >= 4
+        && ttMove.from >= core::kNumPlayableSquares) {
+        const int iidDepth = depth >= 8 ? depth / 2 : depth - 2;
+        if (iidDepth > 0) {
+            (void)negamax(board, side, rules, iidDepth, alpha, beta, ply);
+            // Re-probe the TT ? the shallow search may have stored a move.
+            TTEntry entry2{};
+            if (tt_->probe(hash, entry2)) {
+                if (entry2.from < core::kNumPlayableSquares
+                    && entry2.to   < core::kNumPlayableSquares) {
+                    ttMove.from     = entry2.from;
+                    ttMove.to       = entry2.to;
+                    ttMove.captured = entry2.captured;
+                }
+            }
+        }
+    }
+
     if (depth <= 0) return quiescence(board, side, rules, alpha, beta, ply);
 
     const auto moves = core::generateLegalMoves(board, side, rules);
@@ -166,17 +189,50 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
     std::size_t    count = 0;
     scoreAndSort(scored, count, moves, ttMove, ply);
 
+    // ?? Forced-capture extension ??????????????????????????????????????????
+    // If the side to move has exactly one legal move and it is a capture,
+    // extend the search by one ply. In draughts, single-move positions
+    // are extremely common (forced recaptures after a chain), and the
+    // forced move is essentially free - searching it as deep as a quiet
+    // position wastes depth on a branch with no choices.
+    //
+    // This extension is safe: it never prunes, only deepens. It inflates
+    // the reported depth by the number of forced plies traversed, but the
+    // extra plies are genuinely searched.
+    int childDepth = depth - 1;
+    if (count == 1 && moves[0].isCapture()) {
+        ++childDepth;
+    }
+
     int best = -kMateScore - 1;
     core::Move bestMove{};
     const core::Color opp = core::opposite(side);
 
+    // Principal Variation Search (PVS): the first move gets the full window.
+    // Every subsequent move gets a null-window (alpha, alpha+1) probe first;
+    // if the probe beats alpha, re-search with the full window. Provably
+    // correct - same minimax value as plain alpha-beta, fewer nodes visited.
     for (std::size_t i = 0; i < count; ++i) {
         const core::Move& m = scored[i].move;
         core::Board next = board;
         applyMoveInPlace(next, m);
 
-        const int score = -negamax(next, opp, rules, depth - 1,
-                                   -beta, -alpha, ply + 1);
+        int score;
+        if (i == 0) {
+            score = -negamax(next, opp, rules, depth - 1,
+                             -beta, -alpha, ply + 1);
+        } else {
+            // Null-window probe.
+            score = -negamax(next, opp, rules, depth - 1,
+                             -alpha - 1, -alpha, ply + 1);
+            // If the probe suggests this move might beat alpha, re-search
+            // with the full window.
+            if (score > alpha && score < beta) {
+                score = -negamax(next, opp, rules, depth - 1,
+                                 -beta, -alpha, ply + 1);
+            }
+        }
+
         if (timeMgr_.shouldStop()) return 0;
 
         if (score > best) {
