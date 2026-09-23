@@ -106,6 +106,7 @@ signals:
     void aiThinkingChanged(bool thinking);
     void aiProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
     void openingBookPlayed();
+    void forcedMovePlayed();
     void ponderProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
     void timeChanged(quint64 redMs, quint64 yellowMs);
     void drawOffered(bool accepted, const QString& reason);

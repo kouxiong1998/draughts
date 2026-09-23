@@ -130,6 +130,8 @@ int main(int argc, char** argv) {
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes(kDefaultSizes);
+    splitter->setChildrenCollapsible(false);
+    splitter->setOpaqueResize(true);
 
     // Gear button: show / hide the whole right column.
     QObject::connect(toggleBtn, &QPushButton::clicked,

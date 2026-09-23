@@ -31,6 +31,12 @@ public:
     [[nodiscard]] int lastGameMode() const noexcept { return lastGameMode_; }
     void setLastGameMode(int m);
 
+    /// Per-move think time in milliseconds. One of the six presets:
+    ///   Instant (300 ms) / Fast (2000) / Normal (5000) / Slow (30000)
+    ///   Deep (120000) / Analysis (600000)
+    [[nodiscard]] int thinkTimeMs() const noexcept { return thinkTimeMs_; }
+    void setThinkTimeMs(int ms);
+
     void load();
     void save();
 
@@ -45,6 +51,7 @@ private:
     core::Color   nextFirst_{core::Color::Red};
     core::Color   playerColor_{core::Color::Yellow};
     int           lastGameMode_{0};
+    int           thinkTimeMs_{5000};   // Normal = 5 s default
     bool          loading_{false};
 };
 

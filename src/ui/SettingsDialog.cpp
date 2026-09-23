@@ -41,6 +41,26 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     }
     form->addRow("Animation speed:", animSpeedCombo_);
 
+    thinkTimeCombo_ = new QComboBox(this);
+    thinkTimeCombo_->addItem("Instant (0.3 s)",     300);
+    thinkTimeCombo_->addItem("Fast (2 s)",         2000);
+    thinkTimeCombo_->addItem("Normal (5 s)",       5000);
+    thinkTimeCombo_->addItem("Slow (30 s)",       30000);
+    thinkTimeCombo_->addItem("Deep (2 min)",     120000);
+    thinkTimeCombo_->addItem("Analysis (10 min)", 600000);
+    {
+        const int ms = st.thinkTimeMs();
+        int idx = 2;   // default to Normal
+        if      (ms <=   500) idx = 0;
+        else if (ms <=  3000) idx = 1;
+        else if (ms <= 15000) idx = 2;
+        else if (ms <= 60000) idx = 3;
+        else if (ms <= 300000) idx = 4;
+        else                   idx = 5;
+        thinkTimeCombo_->setCurrentIndex(idx);
+    }
+    form->addRow("AI think time per move:", thinkTimeCombo_);
+
     form->addRow(new QLabel("<hr>", this));
 
     maxCaptureOn_  = new QRadioButton("Majority (max capture ON)",  this);
@@ -105,6 +125,9 @@ void SettingsDialog::onAccepted() {
 
     st.setSoundEnabled(soundCheck_->isChecked());
     st.setAnimationSpeed(animSpeedCombo_->currentData().toDouble());
+    if (thinkTimeCombo_) {
+        st.setThinkTimeMs(thinkTimeCombo_->currentData().toInt());
+    }
 
     const core::RuleSet newRules = maxCaptureOn_->isChecked()
         ? core::RuleSet::InternationalMaxCapture

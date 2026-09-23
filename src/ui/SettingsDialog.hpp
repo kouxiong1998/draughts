@@ -21,6 +21,7 @@ private slots:
 private:
     QCheckBox*    soundCheck_{nullptr};
     QComboBox*    animSpeedCombo_{nullptr};
+    QComboBox*    thinkTimeCombo_{nullptr};
     QRadioButton* maxCaptureOn_{nullptr};
     QRadioButton* maxCaptureOff_{nullptr};
     QRadioButton* firstRed_{nullptr};

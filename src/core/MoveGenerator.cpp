@@ -56,7 +56,7 @@ namespace draughts::core {
             return caps;
         }
 
-        // 2) No captures → quiet moves.
+        // 2) No captures ? quiet moves.
         Bitboard pieces = board.colorMask(side);
         while (pieces) {
             const Square sq = static_cast<Square>(std::countr_zero(pieces));
@@ -94,9 +94,12 @@ namespace draughts::core {
     // ---- Chain landing replay --------------------------------------------------
     namespace {
         bool manReplay(const Board& b, Color side, Square cursor, Bitboard remaining,
-            Square* out, int cap, int& n)
+               Square target, Square* out, int cap, int& n)
         {
-            if (remaining == 0) { if (cap > 0) out[n++] = cursor; return cap > 0; }
+            if (remaining == 0) {
+            if (cap > 0 && cursor == target) { out[n++] = cursor; return true; }
+            return false;
+        }
             for (int d = 0; d < bc::kNumDirs; ++d) {
                 const Square v = bc::step(cursor, d);
                 if (v == kInvalidSquare || !(remaining & Board::bit(v))) continue;
@@ -106,7 +109,8 @@ namespace draughts::core {
                 // we trust MoveGenerator's legality and only need the landing squares
                 // for animation, so allow ghosts.
                 out[n++] = landing;
-                if (manReplay(b, side, landing, remaining & ~Board::bit(v), out, cap + 1, n))
+                if (manReplay(b, side, landing, remaining & ~Board::bit(v), target,
+                              out, cap + 1, n))
                     return true;
                 --n;
             }
@@ -114,9 +118,12 @@ namespace draughts::core {
         }
 
         bool kingReplay(const Board& b, Color side, Square cursor, Bitboard remaining,
-            Square* out, int cap, int& n)
+                Square target, Square* out, int cap, int& n)
         {
-            if (remaining == 0) { if (cap > 0) out[n++] = cursor; return cap > 0; }
+            if (remaining == 0) {
+            if (cap > 0 && cursor == target) { out[n++] = cursor; return true; }
+            return false;
+        }
             for (int d = 0; d < bc::kNumDirs; ++d) {
                 Square victim = kInvalidSquare;
                 for (int k = 0; k < kBoardSize; ++k) {
@@ -131,7 +138,8 @@ namespace draughts::core {
                     if (landing == kInvalidSquare) break;
                     if (!b.empty(landing) && !(remaining & Board::bit(landing))) break;
                     out[n++] = landing;
-                    if (kingReplay(b, side, landing, remaining & ~Board::bit(victim), out, cap + 1, n))
+                    if (kingReplay(b, side, landing, remaining & ~Board::bit(victim), target,
+                                  out, cap + 1, n))
                         return true;
                     --n;
                 }
@@ -149,8 +157,8 @@ namespace draughts::core {
         const Piece p = board.at(move.from);
         if (p.empty() || p.color != side) return false;
         const bool ok = (p.kind == PieceKind::Man)
-            ? manReplay(board, side, move.from, move.captured, out, 0, n)
-            : kingReplay(board, side, move.from, move.captured, out, 0, n);
+            ? manReplay(board, side, move.from, move.captured, move.to, out, 0, n)
+            : kingReplay(board, side, move.from, move.captured, move.to, out, 0, n);
         return ok;
     }
 

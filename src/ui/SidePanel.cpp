@@ -112,17 +112,26 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     timeLabel_    = new QLabel(this);
     resultLabel_  = boldLabel();
 
+    // Status labels have variable-length text (AI thinking / depth / pondering).
+    // Without a fixed width, Qt's layout system grows the side panel whenever
+    // the text gets longer, which briefly resizes the splitter and makes the
+    // board visibly shift and snap back. A fixed width eliminates that entirely.
+    constexpr int kStatusLabelWidth = 340;
+
     bookLabel_ = new QLabel(this);
     bookLabel_->setStyleSheet("color: #ffffff; font-size: 10px;");
     bookLabel_->setWordWrap(false);
+    bookLabel_->setFixedWidth(kStatusLabelWidth);
 
     aiStatusLabel_ = new QLabel(this);
     aiStatusLabel_->setStyleSheet("color: #ffffff; font-size: 10px;");
     aiStatusLabel_->setWordWrap(false);
+    aiStatusLabel_->setFixedWidth(kStatusLabelWidth);
 
     ponderLabel_ = new QLabel(this);
     ponderLabel_->setStyleSheet("color: #ffffff; font-size: 10px;");
     ponderLabel_->setWordWrap(false);
+    ponderLabel_->setFixedWidth(kStatusLabelWidth);
 
     // ?? Top row: green ? hide-panel arrow ?????????????????????????????????
     auto* topRow = new QHBoxLayout();
@@ -353,6 +362,10 @@ void SidePanel::setController(GameController* c, BoardWidget* b) {
                 this, &SidePanel::onPonderProgress);
         connect(controller_, &GameController::openingBookPlayed,
                 this, &SidePanel::onOpeningBookPlayed);
+        connect(controller_, &GameController::forcedMovePlayed,
+                this, [this]{
+                    aiStatusLabel_->setText(QStringLiteral("Forced move"));
+                });
         connect(controller_, &GameController::timeChanged,
                 this, &SidePanel::onTimeChanged);
         connect(controller_, &GameController::drawOffered,

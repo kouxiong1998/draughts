@@ -1,4 +1,5 @@
 #include "Settings.hpp"
+#include <algorithm>
 #include <QSettings>
 
 namespace draughts::ui {
@@ -28,6 +29,11 @@ void Settings::load() {
 
     lastGameMode_ = s.value("mode/last", 0).toInt();
 
+    // Think time, in ms. Clamp to a sane range so a corrupt ini cannot
+    // make the AI think for a millisecond or for a week.
+    thinkTimeMs_ = s.value("search/thinkTimeMs", 5000).toInt();
+    thinkTimeMs_ = std::clamp(thinkTimeMs_, 100, 3600000);
+
     loading_ = false;
 }
 
@@ -42,6 +48,7 @@ void Settings::save() {
     s.setValue("rules/playerColor",
                playerColor_ == core::Color::Yellow ? 1 : 0);
     s.setValue("mode/last", lastGameMode_);
+    s.setValue("search/thinkTimeMs", thinkTimeMs_);
     s.sync();
 }
 
@@ -82,4 +89,10 @@ void Settings::setLastGameMode(int m) {
     if (!loading_) emit changed();
 }
 
+void Settings::setThinkTimeMs(int ms) {
+    const int v = std::clamp(ms, 100, 3600000);
+    if (thinkTimeMs_ == v) return;
+    thinkTimeMs_ = v; save();
+    if (!loading_) emit changed();
+}
 } // namespace draughts::ui

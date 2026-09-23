@@ -334,6 +334,19 @@ void GameController::launchAISearch() {
                                                 engine_.rules());
     if (moves.empty()) return;
 
+    // ?? Forced-move fast path ?????????????????????????????????????????????
+    // If the position has exactly one legal move AND it is a capture chain,
+    // the move is forced - there is nothing to search. Play it instantly:
+    // no threads spawned, no callbacks fired, no delay.
+    //
+    // Draughts makes captures mandatory when available, so "one legal move
+    // that is a capture" means exactly one capture chain is possible.
+    if (moves.size() == 1 && moves[0].isCapture()) {
+        emit forcedMovePlayed();
+        playMoveFromAI(moves[0]);
+        return;
+    }
+
     if (!book_.empty()) {
         std::mt19937_64 rng(std::random_device{}());
         const auto bookMove = book_.pickMove(engine_.board(),
@@ -350,8 +363,18 @@ void GameController::launchAISearch() {
     aiThinking_ = true;
     emit aiThinkingChanged(true);
 
-    ai_.think(engine_.board(), engine_.sideToMove(), engine_.rules(),
-              ai::TimeBudget{});
+    // Build the time budget from the user's think-time setting.
+    //   soft    = 80%  of total  (start next ID iteration only if elapsed < soft)
+    //   hard    = 110% of total  (absolute ceiling, abort immediately)
+    //   minimum = min(300 ms, total/10)
+    const int totalMs = Settings::instance().thinkTimeMs();
+    ai::TimeBudget tb;
+    tb.soft    = std::chrono::milliseconds(totalMs * 8 / 10);
+    tb.hard    = std::chrono::milliseconds(totalMs * 11 / 10);
+    tb.minimum = std::chrono::milliseconds(
+        std::min(300, totalMs / 10));
+
+    ai_.think(engine_.board(), engine_.sideToMove(), engine_.rules(), tb);
 }
 
 void GameController::startPonder() {
