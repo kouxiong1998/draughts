@@ -149,6 +149,10 @@ void SidePanel::setController(GameController* c, BoardWidget* b) {
                 this, &SidePanel::onAIThinkingChanged);
         connect(controller_, &GameController::aiProgress,
                 this, &SidePanel::onAIProgress);
+        connect(controller_, &GameController::openingBookPlayed,
+                this, [this]{
+                    aiStatusLabel_->setText(QStringLiteral("Opening book"));
+                });
     }
     refresh();
 }

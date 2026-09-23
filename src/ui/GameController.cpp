@@ -2,13 +2,36 @@
 #include "Settings.hpp"
 #include "core/MoveGenerator.hpp"
 
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QMetaObject>
+
 #include <algorithm>
+#include <random>
 
 namespace draughts::ui {
 
+namespace {
+
+/// Locate data/opening_book.txt by searching upward from the exe dir.
+QString findBookFile() {
+    QDir d(QCoreApplication::applicationDirPath());
+    for (int i = 0; i < 6; ++i) {
+        const QString candidate = d.absoluteFilePath("data/opening_book.txt");
+        if (QFileInfo::exists(candidate)) return candidate;
+        if (!d.cdUp()) break;
+    }
+    return {};
+}
+
+} // namespace
+
 GameController::GameController(QObject* parent) : QObject(parent) {
     humanColor_ = Settings::instance().playerColor();
+
+    loadOpeningBook();
+    ai_.setOpeningBook(book_.empty() ? nullptr : &book_);
 
     ai_.setProgressCallback([this](const ai::SearchStats& s) {
         QMetaObject::invokeMethod(this, [this, s]{
@@ -29,6 +52,15 @@ GameController::GameController(QObject* parent) : QObject(parent) {
 
 GameController::~GameController() {
     ai_.stop(std::chrono::milliseconds(1500));
+}
+
+void GameController::loadOpeningBook() {
+    const QString path = findBookFile();
+    if (path.isEmpty()) return;
+    const bool ok = book_.loadFromFile(path.toStdString());
+    if (ok) {
+        // Book loaded; nothing to do - empty books are handled gracefully.
+    }
 }
 
 void GameController::clearSelection() {
@@ -109,7 +141,6 @@ void GameController::undo() {
 
     if (!engine_.canUndo()) return;
 
-    // In AI mode, undo twice so it's the human's turn again.
     if (mode_ == controller::GameMode::HumanVsAI
         && engine_.sideToMove() == aiColor()) {
         engine_.undo();
@@ -169,9 +200,24 @@ void GameController::launchAISearch() {
     const auto moves = core::generateLegalMoves(engine_.board(),
                                                 engine_.sideToMove(),
                                                 engine_.rules());
-
     if (moves.empty()) return;
 
+    // Opening book check: if we have a recorded move for this exact
+    // position, play it instantly. This gives opening variety without
+    // running the search, and mirrors the well-known behaviour of every
+    // serious engine.
+    if (!book_.empty()) {
+        std::mt19937_64 rng(std::random_device{}());
+        const auto bookMove = book_.pickMove(engine_.board(),
+                                             engine_.sideToMove(),
+                                             engine_.rules(),
+                                             rng);
+        if (bookMove) {
+            emit openingBookPlayed();
+            playMoveFromAI(*bookMove);
+            return;
+        }
+    }
 
     aiThinking_ = true;
     emit aiThinkingChanged(true);
@@ -188,8 +234,6 @@ void GameController::playMoveFromAI(const core::Move& move) {
     const auto& rec  = hist[engine_.historyCursor() - 1];
     emit moveApplied(rec, preBoard);
     emit changed();
-    // No chained trigger ? in H-vs-AI the AI only plays its own colour,
-    // so after one AI move it is the human's turn.
 }
 
 void GameController::onAISearchDone(const core::Move& move) {
@@ -206,7 +250,6 @@ void GameController::onAISearchDone(const core::Move& move) {
         emit moveApplied(rec, preBoard);
         emit changed();
     } else {
-        // Fallback: play the first legal move so we never hang.
         const auto moves = core::generateLegalMoves(engine_.board(),
                                                     engine_.sideToMove(),
                                                     engine_.rules());
