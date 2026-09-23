@@ -12,6 +12,19 @@ Features at a glance:
 - Sound effects, undo/redo, full move history
 - Depth 15-20 within 5 seconds
 
+## Screenshots
+
+**Board ? mid-game, Human vs AI**
+
+![Board](docs/screenshots/board.png)
+
+**Settings ? capture rule, first move, chip colour**
+
+![Settings](docs/screenshots/settings.png)
+
+**Replay mode ? step through any completed game**
+
+![Replay](docs/screenshots/replay.png)
 ## Features
 
 ### Rules engine (fully tested - 25 unit tests, perft 1-6 verified)
