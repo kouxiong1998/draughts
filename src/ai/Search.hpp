@@ -6,6 +6,7 @@
 
 #include "TimeManager.hpp"
 #include "TranspositionTable.hpp"
+#include "EndgameTablebase.hpp"
 #include "MoveOrdering.hpp"
 #include "core/Board.hpp"
 #include "core/RuleSet.hpp"
@@ -38,6 +39,7 @@ public:
     /// `sharedTT` must outlive this Search. `stopFlag` is shared across
     /// threads so any worker's cancelation cancels all of them.
     Search(TranspositionTable* sharedTT,
+           EndgameTablebase*    sharedTB,
            std::atomic<bool>*   stopFlag,
            ProgressFn           onProgress);
 
@@ -52,6 +54,7 @@ public:
 
 private:
     TranspositionTable* tt_{nullptr};
+    EndgameTablebase*   tb_{nullptr};
     std::atomic<bool>*  stopFlag_{nullptr};
     ProgressFn          onProgress_;
     TimeManager         timeMgr_{TimeBudget{}, nullptr};

@@ -38,7 +38,7 @@ TEST_CASE("Search: returns a legal move from the opening") {
     std::atomic<bool> stop{false};
 
     ai::TranspositionTable tt(1u << 14);
-    ai::Search real(&tt, &stop, nullptr);
+    ai::Search real(&tt, /*tb=*/nullptr, &stop, nullptr);
     ai::TimeBudget budget;
     budget.soft = budget.hard = std::chrono::milliseconds(300);
     budget.minimum = std::chrono::milliseconds(0);
@@ -67,7 +67,7 @@ TEST_CASE("Search: returns a legal capture when forced") {
 
     std::atomic<bool> stop{false};
     ai::TranspositionTable tt(1u << 14);
-    ai::Search s(&tt, &stop, nullptr);
+    ai::Search s(&tt, /*tb=*/nullptr, &stop, nullptr);
     ai::TimeBudget budget;
     budget.soft = budget.hard = std::chrono::milliseconds(200);
     budget.minimum = std::chrono::milliseconds(0);
@@ -90,7 +90,7 @@ TEST_CASE("Search: single-move position returns that move with mate-ish score") 
 
     std::atomic<bool> stop{false};
     ai::TranspositionTable tt(1u << 14);
-    ai::Search s(&tt, &stop, nullptr);
+    ai::Search s(&tt, /*tb=*/nullptr, &stop, nullptr);
     ai::TimeBudget budget;
     budget.soft = budget.hard = std::chrono::milliseconds(200);
     budget.minimum = std::chrono::milliseconds(0);
@@ -108,7 +108,7 @@ TEST_CASE("Search: stop flag aborts promptly") {
     std::atomic<bool> stop{false};
 
     ai::TranspositionTable tt(1u << 14);
-    ai::Search s(&tt, &stop, nullptr);
+    ai::Search s(&tt, /*tb=*/nullptr, &stop, nullptr);
     ai::TimeBudget budget;
     budget.soft    = std::chrono::milliseconds(5000);
     budget.hard    = std::chrono::milliseconds(6000);

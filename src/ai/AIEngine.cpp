@@ -140,8 +140,9 @@ void AIEngine::runWorker(core::Board board, core::Color side, core::RuleSet rule
                          TimeBudget budget, int threadId, bool silent)
 {
     try {
+        EndgameTablebase* tb = (threadId == 0) ? &tb_ : nullptr;
         auto search = std::make_unique<Search>(
-            &tt_, &stopFlag_,
+            &tt_, tb, &stopFlag_,
             [this, threadId, silent](const SearchStats& s) {
                 onWorkerProgress(s, threadId);
             });
