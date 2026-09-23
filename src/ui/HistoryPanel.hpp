@@ -1,8 +1,7 @@
 #pragma once
 /// @file HistoryPanel.hpp
-/// @brief Scrollable list of moves in FMJD algebraic notation. Reads from
-///        GameController::history() and formats every entry through
-///        core::Notation ? never re-implements notation.
+/// @brief Scrollable list of moves in FMJD algebraic notation. Has a small
+///        back-arrow at the top that returns to the main side panel.
 
 #include <QWidget>
 
@@ -18,6 +17,9 @@ public:
     explicit HistoryPanel(QWidget* parent = nullptr);
 
     void setController(GameController* controller);
+
+signals:
+    void backRequested();
 
 public slots:
     void refresh();

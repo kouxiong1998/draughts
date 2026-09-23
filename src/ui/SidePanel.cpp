@@ -14,13 +14,20 @@
 #include <QDate>
 #include <QFileDialog>
 #include <QGridLayout>
-#include <QHBoxLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
+#include <QPolygonF>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
+#include <cstring>
 
 namespace draughts::ui {
 
@@ -37,6 +44,51 @@ QString formatTime(quint64 ms) {
     return QString("%1:%2")
         .arg(mm, 2, 10, QChar('0'))
         .arg(ss, 2, 10, QChar('0'));
+}
+
+// Pure-white transport icons drawn by QPainter so no font (including
+// Windows emoji fonts) can substitute a coloured glyph.
+QIcon makeTransportIcon(const char* kind, int size = 28) {
+    QPixmap pm(size, size);
+    pm.fill(Qt::transparent);
+
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(Qt::NoPen);
+    p.setBrush(Qt::white);
+
+    const double S    = static_cast<double>(size);
+    const double pad  = S * 0.18;
+    const double barW = S * 0.14;
+
+    if (std::strcmp(kind, "first") == 0) {
+        p.drawRect(QRectF(pad, pad, barW, S - 2 * pad));
+        QPolygonF tri;
+        tri << QPointF(S - pad, pad)
+            << QPointF(S - pad, S - pad)
+            << QPointF(pad + barW + 2, S * 0.5);
+        p.drawPolygon(tri);
+    } else if (std::strcmp(kind, "prev") == 0) {
+        QPolygonF tri;
+        tri << QPointF(S - pad, pad)
+            << QPointF(S - pad, S - pad)
+            << QPointF(pad, S * 0.5);
+        p.drawPolygon(tri);
+    } else if (std::strcmp(kind, "next") == 0) {
+        QPolygonF tri;
+        tri << QPointF(pad, pad)
+            << QPointF(pad, S - pad)
+            << QPointF(S - pad, S * 0.5);
+        p.drawPolygon(tri);
+    } else {   // "last"
+        QPolygonF tri;
+        tri << QPointF(pad, pad)
+            << QPointF(pad, S - pad)
+            << QPointF(S - pad - barW - 2, S * 0.5);
+        p.drawPolygon(tri);
+        p.drawRect(QRectF(S - pad - barW, pad, barW, S - 2 * pad));
+    }
+    return QIcon(pm);
 }
 
 } // namespace
@@ -72,6 +124,7 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     ponderLabel_->setStyleSheet("color: #ffffff; font-size: 10px;");
     ponderLabel_->setWordWrap(false);
 
+    // ?? Top row: green ? hide-panel arrow ?????????????????????????????????
     auto* topRow = new QHBoxLayout();
     topRow->setContentsMargins(0, 0, 0, 0);
     auto* hidePanelBtn = new QPushButton(QStringLiteral("\u25C0"), this);
@@ -96,6 +149,10 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     topRow->addStretch(1);
     layout->addLayout(topRow);
 
+    connect(hidePanelBtn, &QPushButton::clicked, this, [this]{
+        emit hidePanelRequested();
+    });
+
     layout->addWidget(turnLabel_);
     layout->addWidget(moveLabel_);
     layout->addWidget(captureLabel_);
@@ -106,10 +163,7 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     layout->addWidget(ponderLabel_);
     layout->addSpacing(6);
 
-    connect(hidePanelBtn, &QPushButton::clicked, this, [this]{
-        emit hidePanelRequested();
-    });
-
+    // ?? Mode box ??????????????????????????????????????????????????????????
     auto* modeBox = new QGroupBox("Mode", this);
     auto* modeLayout = new QVBoxLayout(modeBox);
     modeLayout->setSpacing(2);
@@ -124,36 +178,77 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     layout->addWidget(modeBox);
     layout->addSpacing(6);
 
+    // ?? Buttons grid ??????????????????????????????????????????????????????
     auto* grid = new QGridLayout();
     grid->setSpacing(6);
 
-    undoBtn_     = new QPushButton("Undo",           this);
-    redoBtn_     = new QPushButton("Redo",           this);
-    rotateBtn_   = new QPushButton(QStringLiteral("Rotate 180\u00B0"), this);
-    newGameBtn_  = new QPushButton("New Game",       this);
-    drawBtn_     = new QPushButton("Draw",           this);
-    resignBtn_   = new QPushButton("Give Up",        this);
-    settingsBtn_ = new QPushButton("Settings...",    this);
-    saveBtn_     = new QPushButton("Save Game...",   this);
-    loadBtn_     = new QPushButton("Load Game...",   this);
-    copyBtn_     = new QPushButton("Copy Notation",  this);
-    copyPgnBtn_  = new QPushButton("Copy PGN",       this);
+    undoBtn_         = new QPushButton("Undo",           this);
+    redoBtn_         = new QPushButton("Redo",           this);
+    rotateBtn_       = new QPushButton(QStringLiteral("Rotate 180\u00B0"), this);
+    newGameBtn_      = new QPushButton("New Game",       this);
+    resignBtn_       = new QPushButton("Give Up",        this);
+    settingsBtn_     = new QPushButton("Settings...",    this);
+    saveBtn_         = new QPushButton("Save Game...",   this);
+    loadBtn_         = new QPushButton("Load Game...",   this);
+    copyBtn_         = new QPushButton("Copy Notation",  this);
+    copyPgnBtn_      = new QPushButton("Copy PGN",       this);
+    historyBtn_      = new QPushButton("History",        this);
+    drawBtn_         = new QPushButton("Draw",           this);
+    replayToggleBtn_ = new QPushButton("Replay",         this);
 
-    grid->addWidget(undoBtn_,     0, 0);
-    grid->addWidget(redoBtn_,     0, 1);
-    grid->addWidget(rotateBtn_,   1, 0, 1, 2);
-    grid->addWidget(newGameBtn_,  2, 0, 1, 2);
-    grid->addWidget(saveBtn_,     3, 0);
-    grid->addWidget(loadBtn_,     3, 1);
-    grid->addWidget(copyBtn_,     4, 0);
-    grid->addWidget(copyPgnBtn_,  4, 1);
-    grid->addWidget(drawBtn_,     5, 0);
-    grid->addWidget(resignBtn_,   5, 1);
-    grid->addWidget(settingsBtn_, 6, 0, 1, 2);
+    replayFirstBtn_ = new QPushButton(this);
+    replayPrevBtn_  = new QPushButton(this);
+    replayNextBtn_  = new QPushButton(this);
+    replayLastBtn_  = new QPushButton(this);
+    replayFirstBtn_->setIcon(makeTransportIcon("first"));
+    replayPrevBtn_ ->setIcon(makeTransportIcon("prev"));
+    replayNextBtn_ ->setIcon(makeTransportIcon("next"));
+    replayLastBtn_ ->setIcon(makeTransportIcon("last"));
+    replayFirstBtn_->setIconSize(QSize(28, 28));
+    replayPrevBtn_ ->setIconSize(QSize(28, 28));
+    replayNextBtn_ ->setIconSize(QSize(28, 28));
+    replayLastBtn_ ->setIconSize(QSize(28, 28));
+    replayFirstBtn_->setToolTip("First move");
+    replayPrevBtn_ ->setToolTip("Previous move");
+    replayNextBtn_ ->setToolTip("Next move");
+    replayLastBtn_ ->setToolTip("Last move");
+
+    replayStatusLabel_ = new QLabel(this);
+    replayStatusLabel_->setStyleSheet("color: #b8b8b8; font-size: 10px;");
+
+    grid->addWidget(undoBtn_,         0, 0);
+    grid->addWidget(redoBtn_,         0, 1);
+    grid->addWidget(rotateBtn_,       1, 0, 1, 2);
+    grid->addWidget(newGameBtn_,      2, 0, 1, 2);
+    grid->addWidget(saveBtn_,         3, 0);
+    grid->addWidget(loadBtn_,         3, 1);
+    grid->addWidget(copyBtn_,         4, 0);
+    grid->addWidget(copyPgnBtn_,      4, 1);
+    grid->addWidget(drawBtn_,         5, 0);
+    grid->addWidget(resignBtn_,       5, 1);
+    grid->addWidget(settingsBtn_,     6, 0);
+    grid->addWidget(historyBtn_,      6, 1);
+    grid->addWidget(replayToggleBtn_, 7, 0, 1, 2);
+
+    // Replay status on its own row, centered above the transport buttons.
+    grid->addWidget(replayStatusLabel_, 8, 0, 1, 2, Qt::AlignHCenter);
+
+    // Transport buttons row, centered horizontally with equal stretches
+    // on both sides.
+    auto* replayRow = new QHBoxLayout();
+    replayRow->setSpacing(6);
+    replayRow->addStretch(1);
+    replayRow->addWidget(replayFirstBtn_);
+    replayRow->addWidget(replayPrevBtn_);
+    replayRow->addWidget(replayNextBtn_);
+    replayRow->addWidget(replayLastBtn_);
+    replayRow->addStretch(1);
+    grid->addLayout(replayRow, 9, 0, 1, 2);
 
     layout->addLayout(grid);
     layout->addStretch(1);
 
+    // ?? Connections ???????????????????????????????????????????????????????
     connect(undoBtn_,    &QPushButton::clicked, this, [this]{ if (controller_) controller_->undo(); });
     connect(redoBtn_,    &QPushButton::clicked, this, [this]{ if (controller_) controller_->redo(); });
     connect(resignBtn_,  &QPushButton::clicked, this, [this]{ if (controller_) controller_->resign(); });
@@ -189,10 +284,32 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
         refresh();
     });
 
-    connect(saveBtn_, &QPushButton::clicked, this, &SidePanel::onSaveGame);
-    connect(loadBtn_, &QPushButton::clicked, this, &SidePanel::onLoadGame);
-    connect(copyBtn_,    &QPushButton::clicked, this, &SidePanel::onCopyNotation);
-    connect(copyPgnBtn_, &QPushButton::clicked, this, &SidePanel::onCopyPGN);
+    connect(saveBtn_,     &QPushButton::clicked, this, &SidePanel::onSaveGame);
+    connect(loadBtn_,     &QPushButton::clicked, this, &SidePanel::onLoadGame);
+    connect(copyBtn_,     &QPushButton::clicked, this, &SidePanel::onCopyNotation);
+    connect(copyPgnBtn_,  &QPushButton::clicked, this, &SidePanel::onCopyPGN);
+
+    connect(historyBtn_, &QPushButton::clicked, this, [this]{
+        emit historyRequested();
+    });
+
+    connect(replayToggleBtn_, &QPushButton::clicked, this, [this]{
+        if (!controller_) return;
+        if (controller_->isReplaying()) controller_->exitReplay();
+        else                            controller_->enterReplay();
+    });
+    connect(replayFirstBtn_, &QPushButton::clicked, this, [this]{
+        if (controller_) controller_->replayFirst();
+    });
+    connect(replayPrevBtn_,  &QPushButton::clicked, this, [this]{
+        if (controller_) controller_->replayPrev();
+    });
+    connect(replayNextBtn_,  &QPushButton::clicked, this, [this]{
+        if (controller_) controller_->replayNext();
+    });
+    connect(replayLastBtn_,  &QPushButton::clicked, this, [this]{
+        if (controller_) controller_->replayLast();
+    });
 
     connect(modeHumanHuman_, &QRadioButton::toggled, this, [this](bool on){
         if (on) {
@@ -201,7 +318,7 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
                 controller_->setMode(controller::GameMode::HumanVsHuman);
         }
     });
-    connect(modeHumanAI_,    &QRadioButton::toggled, this, [this](bool on){
+    connect(modeHumanAI_, &QRadioButton::toggled, this, [this](bool on){
         if (on) {
             Settings::instance().setLastGameMode(1);
             if (controller_)
@@ -214,19 +331,16 @@ void SidePanel::setController(GameController* c, BoardWidget* b) {
     if (controller_) disconnect(controller_, nullptr, this, nullptr);
     controller_ = c;
     board_      = b;
+
     if (controller_) {
-        // Restore the last-used mode from persistent settings.
+        // Restore last-used mode.
         {
             const int saved = Settings::instance().lastGameMode();
-            if (saved == 1) {
-                modeHumanAI_->setChecked(true);
-            } else {
-                modeHumanHuman_->setChecked(true);
-            }
-            if (controller_)
-                controller_->setMode(saved == 1
-                    ? controller::GameMode::HumanVsAI
-                    : controller::GameMode::HumanVsHuman);
+            if (saved == 1) modeHumanAI_->setChecked(true);
+            else            modeHumanHuman_->setChecked(true);
+            controller_->setMode(saved == 1
+                ? controller::GameMode::HumanVsAI
+                : controller::GameMode::HumanVsHuman);
         }
 
         connect(controller_, &GameController::changed,
@@ -243,6 +357,8 @@ void SidePanel::setController(GameController* c, BoardWidget* b) {
                 this, &SidePanel::onTimeChanged);
         connect(controller_, &GameController::drawOffered,
                 this, &SidePanel::onDrawOffered);
+        connect(controller_, &GameController::replayModeChanged,
+                this, &SidePanel::onReplayModeChanged);
     }
     refresh();
 }
@@ -262,7 +378,16 @@ void SidePanel::refresh() {
         turnLabel_->clear();
     }
 
-    moveLabel_->setText(QString("Move: %1").arg(controller_->ply() / 2 + 1));
+    if (controller_->isReplaying()) {
+        const int ply   = controller_->replayPly();
+        const int total = controller_->totalPlies();
+        replayStatusLabel_->setText(
+            QString("Replay %1 / %2").arg(ply).arg(total));
+        moveLabel_->setText(QString("Move: %1").arg(ply / 2 + 1));
+    } else {
+        replayStatusLabel_->clear();
+        moveLabel_->setText(QString("Move: %1").arg(controller_->ply() / 2 + 1));
+    }
 
     const auto& b = controller_->board();
     const int redLost    = 20 - b.count(core::Color::Red,    core::PieceKind::Man)
@@ -326,6 +451,18 @@ void SidePanel::onDrawOffered(bool accepted, const QString& reason) {
     } else {
         QMessageBox::information(this, "Draw declined", reason);
     }
+}
+
+void SidePanel::onReplayModeChanged(bool active) {
+    replayToggleBtn_->setText(active
+        ? QStringLiteral("Exit Replay")
+        : QStringLiteral("Replay"));
+    if (!active) {
+        replayStatusLabel_->clear();
+    }
+    drawBtn_   ->setEnabled(!active);
+    resignBtn_ ->setEnabled(!active);
+    refresh();
 }
 
 void SidePanel::onSaveGame() {
@@ -410,7 +547,6 @@ void SidePanel::onCopyPGN() {
     const auto& hist   = controller_->history();
     const auto  cursor = controller_->historyCursor();
 
-    // ?? Result tag ?????????????????????????????????????????????????????????
     QString resultTag = QStringLiteral("*");
     switch (controller_->result()) {
         case core::GameResult::RedWins:    resultTag = QStringLiteral("1-0");     break;
@@ -419,7 +555,6 @@ void SidePanel::onCopyPGN() {
         case core::GameResult::Ongoing:    resultTag = QStringLiteral("*");       break;
     }
 
-    // ?? Player names ???????????????????????????????????????????????????????
     const QString redName = (controller_->mode() == controller::GameMode::HumanVsAI)
         ? (controller_->humanColor() == core::Color::Red
              ? QStringLiteral("Human") : QStringLiteral("AI"))
@@ -430,14 +565,12 @@ void SidePanel::onCopyPGN() {
              ? QStringLiteral("Human") : QStringLiteral("AI"))
         : QStringLiteral("Human 2");
 
-    // ?? Today's date in PGN format: YYYY.MM.DD ?????????????????????????????
     const QDate today = QDate::currentDate();
     const QString dateStr = QString("%1.%2.%3")
         .arg(today.year(),   4, 10, QChar('0'))
         .arg(today.month(),  2, 10, QChar('0'))
         .arg(today.day(),    2, 10, QChar('0'));
 
-    // ?? Header ?????????????????????????????????????????????????????????????
     QString pgn;
     pgn += QStringLiteral("[Event \"Draughts 10x10 game\"]\n");
     pgn += QStringLiteral("[Site  \"Local\"]\n");
@@ -449,32 +582,21 @@ void SidePanel::onCopyPGN() {
     pgn += QStringLiteral("[Variant \"International\"]\n");
     pgn += QStringLiteral("\n");
 
-    // ?? Moves, wrapped at ~80 columns ??????????????????????????????????????
     core::Board board; board.resetStandard();
     core::Color side = core::Color::Red;
 
     QString moveLine;
     int lineLen = 0;
 
-    auto flushIfLong = [&]() {
-        if (lineLen >= 78) {
-            pgn += moveLine + "\n";
-            moveLine.clear();
-            lineLen = 0;
-        }
-    };
-
     for (std::size_t i = 0; i < cursor; ++i) {
         const auto& rec = hist[i];
         const bool  isRed = (rec.mover == core::Color::Red);
 
-        // Move number prefix on Red's turn (or first move of the game).
         QString token;
         if (isRed) {
             const int moveNo = static_cast<int>(i) / 2 + 1;
             token += QString("%1. ").arg(moveNo);
         }
-
         token += QString::fromStdString(core::formatMove(board, side, rec.move));
         token += ' ';
 
@@ -485,9 +607,7 @@ void SidePanel::onCopyPGN() {
         }
         moveLine += token;
         lineLen  += token.length();
-        (void)flushIfLong;
 
-        // Advance the reconstruction board.
         core::Board next = board;
         core::Bitboard cap = rec.move.captured;
         while (cap) {
@@ -504,10 +624,7 @@ void SidePanel::onCopyPGN() {
         side  = core::opposite(side);
     }
 
-    if (!moveLine.isEmpty()) {
-        pgn += moveLine;
-    }
-
+    if (!moveLine.isEmpty()) pgn += moveLine;
     pgn += QString(" %1\n").arg(resultTag);
 
     QApplication::clipboard()->setText(pgn);

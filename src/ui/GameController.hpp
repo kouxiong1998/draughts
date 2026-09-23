@@ -26,7 +26,11 @@ public:
     explicit GameController(QObject* parent = nullptr);
     ~GameController() override;
 
-    [[nodiscard]] const core::Board& board()      const noexcept { return engine_.board(); }
+    [[nodiscard]] const core::Board& board()      const noexcept {
+        if (!replayMode_) return engine_.board();
+        rebuildReplayBoard();
+        return replayBoard_;
+    }
     [[nodiscard]] core::Color        sideToMove() const noexcept { return engine_.sideToMove(); }
     [[nodiscard]] core::GameResult   result()     const noexcept { return engine_.result(); }
     [[nodiscard]] core::RuleSet      rules()      const noexcept { return engine_.rules(); }
@@ -46,9 +50,12 @@ public:
     }
 
     [[nodiscard]] std::optional<core::Square> selectedSquare() const noexcept {
+        if (replayMode_) return std::nullopt;
         return selected_;
     }
     [[nodiscard]] const std::vector<core::Move>& selectionMoves() const noexcept {
+        static const std::vector<core::Move> empty;
+        if (replayMode_) return empty;
         return selectionMoves_;
     }
 
@@ -67,6 +74,13 @@ public:
     }
     [[nodiscard]] bool aiThinking() const noexcept { return aiThinking_; }
 
+    // ?? Replay ?????????????????????????????????????????????????????????????
+    [[nodiscard]] bool isReplaying() const noexcept { return replayMode_; }
+    [[nodiscard]] int  replayPly()   const noexcept { return replayPly_; }
+    [[nodiscard]] int  totalPlies()  const noexcept {
+        return static_cast<int>(engine_.historyCursor());
+    }
+
     void adoptEngine(core::GameEngine&& newEngine);
 
 public slots:
@@ -78,6 +92,14 @@ public slots:
     void offerDraw();
     void setMode(controller::GameMode m);
 
+    void enterReplay();
+    void exitReplay();
+    void setReplayPly(int ply);
+    void replayFirst();
+    void replayPrev();
+    void replayNext();
+    void replayLast();
+
 signals:
     void changed();
     void moveApplied(const core::MoveRecord& rec, const core::Board& preBoard);
@@ -87,6 +109,7 @@ signals:
     void ponderProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
     void timeChanged(quint64 redMs, quint64 yellowMs);
     void drawOffered(bool accepted, const QString& reason);
+    void replayModeChanged(bool active);
 
 private:
     core::GameEngine            engine_{};
@@ -99,6 +122,12 @@ private:
 
     ai::OpeningBook book_;
     ai::AIEngine    ai_;
+
+    // Replay
+    bool           replayMode_{false};
+    int            replayPly_{0};
+    mutable core::Board replayBoard_{};
+    void rebuildReplayBoard() const;
 
     // Move timer
     QTimer*        clockTimer_{nullptr};

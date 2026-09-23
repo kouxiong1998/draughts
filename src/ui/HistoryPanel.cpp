@@ -2,27 +2,65 @@
 #include "GameController.hpp"
 #include "core/Notation.hpp"
 
-#include <QListWidget>
-#include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QListWidget>
+#include <QPushButton>
+#include <QVBoxLayout>
 
 namespace draughts::ui {
 
 HistoryPanel::HistoryPanel(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+
+    // ?? Top row: back-arrow (green) on the left, "History" title next ?????
+    auto* topRow = new QHBoxLayout();
+    topRow->setContentsMargins(0, 0, 0, 0);
+
+    auto* backBtn = new QPushButton(QStringLiteral("\u25C0"), this);
+    backBtn->setFixedSize(56, 56);
+    backBtn->setToolTip("Back to the side panel");
+    backBtn->setStyleSheet(
+        "QPushButton {"
+        "  color: #22c55e;"
+        "  background-color: rgba(34, 197, 94, 40);"
+        "  border: 2px solid #22c55e;"
+        "  border-radius: 6px;"
+        "  font-size: 28px;"
+        "  font-weight: bold;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: rgba(34, 197, 94, 90);"
+        "}"
+        "QPushButton:pressed {"
+        "  background-color: rgba(34, 197, 94, 150);"
+        "}");
 
     auto* title = new QLabel("History", this);
-    QFont f = title->font();
-    f.setBold(true);
-    title->setFont(f);
-    layout->addWidget(title);
+    {
+        QFont f = title->font();
+        f.setBold(true);
+        f.setPointSize(f.pointSize() + 2);
+        title->setFont(f);
+    }
+
+    topRow->addWidget(backBtn);
+    topRow->addSpacing(8);
+    topRow->addWidget(title);
+    topRow->addStretch(1);
+    layout->addLayout(topRow);
 
     list_ = new QListWidget(this);
     list_->setAlternatingRowColors(true);
     list_->setSelectionMode(QAbstractItemView::NoSelection);
     list_->setFocusPolicy(Qt::NoFocus);
     layout->addWidget(list_, 1);
+
+    connect(backBtn, &QPushButton::clicked, this, [this]{
+        emit backRequested();
+    });
 }
 
 void HistoryPanel::setController(GameController* c) {
@@ -41,8 +79,6 @@ void HistoryPanel::refresh() {
     const auto& history = controller_->history();
     const auto  cursor  = controller_->historyCursor();
 
-    // Reconstruct board state incrementally so Notation can print full
-    // capture chains (it needs the board *before* each move).
     core::Board board; board.resetStandard();
     core::Color side = core::Color::Red;
 

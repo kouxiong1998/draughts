@@ -135,6 +135,7 @@ void GameController::setMode(controller::GameMode m) {
 }
 
 void GameController::handleSquareClick(core::Square sq) {
+    if (replayMode_) return;   // clicks are ignored during replay
     if (engine_.result() != core::GameResult::Ongoing) return;
     if (aiThinking_ || isAITurn()) return;
 
@@ -319,6 +320,7 @@ void GameController::adoptEngine(core::GameEngine&& newEngine) {
 }
 
 void GameController::maybeTriggerAI() {
+    if (replayMode_) return;
     if (engine_.result() != core::GameResult::Ongoing) return;
     if (!isAITurn()) return;
     launchAISearch();
@@ -413,6 +415,88 @@ void GameController::onAISearchDone(const core::Move& move) {
                                                     engine_.rules());
         if (!moves.empty()) playMoveFromAI(moves[0]);
     }
+}
+
+// ?? Replay ?????????????????????????????????????????????????????????????????
+
+void GameController::rebuildReplayBoard() const {
+    core::Board b; b.resetStandard();
+    const int n = std::min(replayPly_,
+                           static_cast<int>(engine_.historyCursor()));
+    const auto& hist = engine_.history();
+
+    for (int i = 0; i < n; ++i) {
+        const auto& rec = hist[static_cast<std::size_t>(i)];
+        core::Bitboard cap = rec.move.captured;
+        while (cap) {
+            const auto s = static_cast<core::Square>(std::countr_zero(cap));
+            cap &= cap - 1;
+            b.removePiece(s);
+        }
+        const auto p = b.at(rec.move.from);
+        b.removePiece(rec.move.from);
+        b.setPiece(rec.move.to, p.color, p.kind);
+        if (p.kind == core::PieceKind::Man && rec.move.isPromotion)
+            b.promote(rec.move.to);
+    }
+    replayBoard_ = b;
+}
+
+void GameController::enterReplay() {
+    if (replayMode_) return;
+    ai_.stop(std::chrono::milliseconds(1500));
+    aiThinking_ = false;
+    emit aiThinkingChanged(false);
+    replayMode_ = true;
+    replayPly_  = totalPlies();
+    clearSelection();
+    stopClock();
+    emit replayModeChanged(true);
+    emit changed();
+}
+
+void GameController::exitReplay() {
+    if (!replayMode_) return;
+    replayMode_ = false;
+    replayPly_  = 0;
+    clearSelection();
+    if (engine_.result() == core::GameResult::Ongoing) {
+        startClockFor(engine_.sideToMove());
+    }
+    emit replayModeChanged(false);
+    emit changed();
+    maybeTriggerAI();
+}
+
+void GameController::setReplayPly(int ply) {
+    if (!replayMode_) return;
+    const int maxPly = totalPlies();
+    replayPly_ = std::clamp(ply, 0, maxPly);
+    emit changed();
+}
+
+void GameController::replayFirst() {
+    if (!replayMode_) return;
+    replayPly_ = 0;
+    emit changed();
+}
+
+void GameController::replayPrev() {
+    if (!replayMode_) return;
+    if (replayPly_ > 0) --replayPly_;
+    emit changed();
+}
+
+void GameController::replayNext() {
+    if (!replayMode_) return;
+    if (replayPly_ < totalPlies()) ++replayPly_;
+    emit changed();
+}
+
+void GameController::replayLast() {
+    if (!replayMode_) return;
+    replayPly_ = totalPlies();
+    emit changed();
 }
 
 } // namespace draughts::ui

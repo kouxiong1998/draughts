@@ -5,6 +5,7 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -20,70 +21,44 @@
 
 namespace {
 
-/// Pick the screen the cursor is on, or the primary screen as fallback.
 const QScreen* currentScreen() {
     if (const QScreen* s = QGuiApplication::screenAt(QCursor::pos())) return s;
     return QGuiApplication::primaryScreen();
 }
 
-/// Center the window both horizontally and vertically inside the screen's
-/// available area (which already excludes the taskbar). Called before and
-/// after show() so Qt's layout system can't push it off-center.
 void placeWindow(QMainWindow& window, int wantedW, int wantedH) {
     const QScreen* screen = currentScreen();
     if (!screen) {
         window.resize(wantedW, wantedH);
         return;
     }
-
     const QRect avail = screen->availableGeometry();
-
-    // Clamp size so we never exceed the available rectangle.
     const int winW = std::min(wantedW, std::max(640, avail.width()));
     const int winH = std::min(wantedH, std::max(480, avail.height()));
-
     window.resize(winW, winH);
-
-    // Center both axes.
     const int x = avail.x() + (avail.width()  - winW) / 2;
     const int y = avail.y() + (avail.height() - winH) / 2;
-
     window.move(x, y);
 }
 
-/// Re-apply the screen-center clamp after show(). Qt on Windows may grow
-/// or reposition the window during show() to satisfy layout minimums; this
-/// runs from a zero-delay timer once the event loop settles, using the
-/// frame-vs-client offset so the whole window (title bar included) ends
-/// up centered inside the available area.
 void enforceScreenBounds(QMainWindow& window) {
     const QScreen* screen =
         QGuiApplication::screenAt(window.frameGeometry().center());
     if (!screen) screen = QGuiApplication::primaryScreen();
     if (!screen) return;
-
     const QRect avail = screen->availableGeometry();
-
-    // Frame-vs-client offset (Windows: ~8 px left/right, ~30 px title bar).
     const QRect frame  = window.frameGeometry();
     const QRect client = window.geometry();
     const int frameDX = client.x() - frame.x();
     const int frameDY = client.y() - frame.y();
-
-    // Fit the frame entirely inside the available rectangle.
     const int fW = std::min(frame.width(),  avail.width());
     const int fH = std::min(frame.height(), avail.height());
-
-    // Center the frame inside the available rectangle.
     const int fX = avail.x() + (avail.width()  - fW) / 2;
     const int fY = avail.y() + (avail.height() - fH) / 2;
-
-    // Convert frame coords back to client coords for resize/move.
     const int cw = fW - 2 * frameDX;
     const int ch = fH - frameDY - frameDX;
     const int cx = fX + frameDX;
     const int cy = fY + frameDY;
-
     window.resize(std::max(320, cw), std::max(240, ch));
     window.move(cx, cy);
 }
@@ -102,7 +77,7 @@ int main(int argc, char** argv) {
 
     auto* controller = new draughts::ui::GameController(&window);
 
-    // ?? Board stacked tightly with a gear-icon panel toggle button below ???
+    // ?? Left column: board + gear (panel toggle) below ?????????????????????
     auto* board = new draughts::ui::BoardWidget(&window);
     board->setController(controller);
     {
@@ -126,7 +101,7 @@ int main(int argc, char** argv) {
     leftLayout->addWidget(board, 1);
     leftLayout->addWidget(toggleBtn, 0, Qt::AlignHCenter);
 
-    // ?? Right column ????????????????????????????????????????????????????????
+    // ?? Right column: SidePanel and HistoryPanel in a QStackedWidget ???????
     auto* side    = new draughts::ui::SidePanel(&window);
     auto* history = new draughts::ui::HistoryPanel(&window);
     side->setController(controller, board);
@@ -135,13 +110,17 @@ int main(int argc, char** argv) {
     auto* sound = new draughts::ui::SoundManager(&window);
     sound->setController(controller);
 
+    auto* stack = new QStackedWidget(&window);
+    stack->addWidget(side);      // index 0
+    stack->addWidget(history);   // index 1
+    stack->setCurrentIndex(0);
+
     auto* rightColumn = new QWidget(&window);
     auto* rightLayout = new QVBoxLayout(rightColumn);
     rightLayout->setContentsMargins(12, 12, 12, 12);
-    rightLayout->addWidget(side);
-    rightLayout->addWidget(history, 1);
+    rightLayout->addWidget(stack, 1);
 
-    // ?? Splitter ????????????????????????????????????????????????????????????
+    // ?? Splitter ???????????????????????????????????????????????????????????
     const int w = window.width();
     const QList<int> kDefaultSizes{ w * 2 / 3, w / 3 };
 
@@ -152,6 +131,7 @@ int main(int argc, char** argv) {
     splitter->setStretchFactor(1, 1);
     splitter->setSizes(kDefaultSizes);
 
+    // Gear button: show / hide the whole right column.
     QObject::connect(toggleBtn, &QPushButton::clicked,
                      &window, [splitter, kDefaultSizes]{
         auto* panel = splitter->widget(1);
@@ -163,17 +143,29 @@ int main(int argc, char** argv) {
         }
     });
 
+    // ? in the side panel: hide the whole right column.
     QObject::connect(side, &draughts::ui::SidePanel::hidePanelRequested,
                      &window, [splitter]{
         splitter->widget(1)->setVisible(false);
     });
 
+    // History button in the side panel: swap the stacked view to History.
+    QObject::connect(side, &draughts::ui::SidePanel::historyRequested,
+                     &window, [stack, splitter]{
+        auto* panel = splitter->widget(1);
+        if (!panel->isVisible()) panel->setVisible(true);
+        stack->setCurrentIndex(1);
+    });
+
+    // ? in the history panel: swap back to the side panel.
+    QObject::connect(history, &draughts::ui::HistoryPanel::backRequested,
+                     &window, [stack]{
+        stack->setCurrentIndex(0);
+    });
+
     window.setCentralWidget(splitter);
     window.show();
 
-    // Qt on Windows can grow or reposition the window during show() to
-    // satisfy the layout's minimum sizes. Re-apply the screen-bounds
-    // clamp once the event loop has processed the show() call.
     QTimer::singleShot(0, &window, [&window]{
         enforceScreenBounds(window);
     });

@@ -15,6 +15,7 @@ class SidePanel : public QWidget {
 
 signals:
     void hidePanelRequested();
+    void historyRequested();
 
 public:
     explicit SidePanel(QWidget* parent = nullptr);
@@ -34,6 +35,7 @@ private slots:
     void onPonderProgress(int depth, quint64 nodes, int score, qint64 ms);
     void onOpeningBookPlayed();
     void onTimeChanged(quint64 redMs, quint64 yellowMs);
+    void onReplayModeChanged(bool active);
     void onDrawOffered(bool accepted, const QString& reason);
 
 private:
@@ -63,6 +65,13 @@ private:
     QPushButton* loadBtn_{nullptr};
     QPushButton* copyBtn_{nullptr};
     QPushButton* copyPgnBtn_{nullptr};
+    QPushButton* historyBtn_{nullptr};
+    QPushButton* replayToggleBtn_{nullptr};
+    QPushButton* replayFirstBtn_{nullptr};
+    QPushButton* replayPrevBtn_{nullptr};
+    QPushButton* replayNextBtn_{nullptr};
+    QPushButton* replayLastBtn_{nullptr};
+    QLabel*      replayStatusLabel_{nullptr};
 };
 
 } // namespace draughts::ui
