@@ -1,6 +1,7 @@
 #include "CaptureRules.hpp"
 #include "BoardConstants.hpp"
 #include <algorithm>
+#include <vector>
 
 namespace draughts::core {
 namespace {
@@ -17,7 +18,7 @@ struct ChainCtx {
 
 inline bool oppositeDir(int a, int b) noexcept {
     if (a < 0 || b < 0) return false;
-    return (a + b) == 3;   // NE(0)<->SW(3), NW(1)<->SE(2)
+    return (a + b) == 3;
 }
 
 void manChain(ChainCtx& ctx, Square cursor, int lastDir) {
@@ -53,8 +54,11 @@ void manChain(ChainCtx& ctx, Square cursor, int lastDir) {
     }
 }
 
-void kingChain(ChainCtx& ctx, Square cursor, int lastDir) {
-    bool extended = false;
+/// True if any capture is available from `cursor` (for the given side, with
+/// the given captured-mask, respecting the direction restriction). Used by
+/// the FreeCapture king rule to classify landing squares as "live" (more
+/// captures from there) or "dead" (chain terminates there).
+bool hasAnyCaptureFrom(const ChainCtx& ctx, Square cursor, int lastDir) {
     for (int d = 0; d < bc::kNumDirs; ++d) {
         if (ctx.rules == RuleSet::InternationalFreeCapture && oppositeDir(d, lastDir))
             continue;
@@ -73,11 +77,65 @@ void kingChain(ChainCtx& ctx, Square cursor, int lastDir) {
             const Square landing = bc::ray(victim, d, k);
             if (landing == kInvalidSquare) break;
             if (!ctx.board->empty(landing) && !(ctx.captured & Board::bit(landing))) break;
+            return true;
+        }
+    }
+    return false;
+}
+
+void kingChain(ChainCtx& ctx, Square cursor, int lastDir) {
+    bool extended = false;
+    for (int d = 0; d < bc::kNumDirs; ++d) {
+        if (ctx.rules == RuleSet::InternationalFreeCapture && oppositeDir(d, lastDir))
+            continue;
+
+        Square victim = kInvalidSquare;
+        for (int k = 0; k < kBoardSize; ++k) {
+            const Square s = bc::ray(cursor, d, k);
+            if (s == kInvalidSquare) break;
+            if (ctx.captured & Board::bit(s)) continue;
+            if (ctx.board->hasPiece(opposite(ctx.side), s)) { victim = s; break; }
+            if (!ctx.board->empty(s)) break;
+        }
+        if (victim == kInvalidSquare) continue;
+
+        // Gather all empty landing squares beyond the victim on this diagonal.
+        std::vector<Square> landings;
+        for (int k = 0; k < kBoardSize; ++k) {
+            const Square landing = bc::ray(victim, d, k);
+            if (landing == kInvalidSquare) break;
+            if (!ctx.board->empty(landing) && !(ctx.captured & Board::bit(landing)))
+                break;
+            landings.push_back(landing);
+        }
+        if (landings.empty()) continue;
+
+        // ?? FreeCapture landing restriction ???????????????????????????????
+        // In the max-capture-OFF variant, a king cannot land on a square
+        // that skips over a nearer landing square from which further
+        // captures are still available. If any landing square is "live",
+        // only live landings are valid for this flight.
+        std::vector<bool> isLive;
+        bool anyLive = false;
+        if (ctx.rules == RuleSet::InternationalFreeCapture) {
+            isLive.assign(landings.size(), false);
+            ChainCtx probe = ctx;
+            for (std::size_t i = 0; i < landings.size(); ++i) {
+                probe.captured = ctx.captured | Board::bit(victim);
+                isLive[i] = hasAnyCaptureFrom(probe, landings[i], d);
+                if (isLive[i]) anyLive = true;
+            }
+        }
+
+        for (std::size_t i = 0; i < landings.size(); ++i) {
+            if (ctx.rules == RuleSet::InternationalFreeCapture
+                && anyLive && !isLive[i])
+                continue;   // dead landing skipped when a live one exists
 
             extended = true;
             const Bitboard saved = ctx.captured;
             ctx.captured |= Board::bit(victim);
-            kingChain(ctx, landing, d);
+            kingChain(ctx, landings[i], d);
             ctx.captured = saved;
         }
     }

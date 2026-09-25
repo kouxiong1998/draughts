@@ -8,6 +8,7 @@
 #include "core/MoveGenerator.hpp"
 
 #include <QMouseEvent>
+#include <QFont>
 #include <QPainter>
 #include <QPaintEvent>
 #include <algorithm>
@@ -202,6 +203,51 @@ void BoardWidget::drawPiecesAnimated(QPainter& p, int cell,
     }
 }
 
+void BoardWidget::drawSquareLabels(QPainter& p, int cell,
+                                   const QPoint& origin) const
+{
+    QFont font = p.font();
+    font.setPixelSize(std::max(8, static_cast<int>(cell * 0.30)));
+    font.setBold(true);
+    p.setFont(font);
+
+    for (int sq = 0; sq < core::kNumPlayableSquares; ++sq) {
+        const auto s   = static_cast<core::Square>(sq);
+        const int  row = core::bc::rowOf(s);
+        const int  col = core::bc::colOf(s);
+
+        // Numbering: 1 at bottom-left, 5 at bottom-right, then 6-10 on the
+        // next row up, and so on, up to 50 at the top-right.
+        // Playable columns in a row start at 0 for odd rows, 1 for even rows.
+        const int firstPlayableCol = (row % 2 == 0) ? 1 : 0;
+        const int withinRow        = (col - firstPlayableCol) / 2;
+        const int label            = (core::kBoardSize - 1 - row) * 5
+                                     + withinRow + 1;
+
+        // If the view is rotated, flip the draw position (label stays
+        // attached to its logical square).
+        int dRow = row;
+        int dCol = col;
+        if (rotated_) {
+            dRow = core::kBoardSize - 1 - dRow;
+            dCol = core::kBoardSize - 1 - dCol;
+        }
+
+        const QRectF  r      = cellRect(dRow, dCol, cell, origin);
+        const QPointF center = r.center();
+        const double  radius = cell * 0.20;
+
+        // Dark circle background so the label is readable over both the
+        // black square fill and the coloured chips.
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, 165));
+        p.drawEllipse(center, radius, radius);
+
+        p.setPen(QColor(255, 255, 255, 220));
+        p.drawText(r, Qt::AlignCenter, QString::number(label));
+    }
+}
+
 void BoardWidget::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -217,6 +263,9 @@ void BoardWidget::paintEvent(QPaintEvent*) {
         drawHighlights(p, cell, origin);
         drawPieces    (p, cell, origin);
     }
+
+    // Square labels are always drawn last, on top of everything.
+    drawSquareLabels(p, cell, origin);
 }
 
 void BoardWidget::mousePressEvent(QMouseEvent* e) {

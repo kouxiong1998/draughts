@@ -115,6 +115,25 @@ inline constexpr RayTable       kRayTable{};
     return indexFromRowCol(kBoardSize - 1 - r, kBoardSize - 1 - c);
 }
 
+// Square labels (match the numbers drawn on the board).
+// 1 at bottom-left, 5 at bottom-right of the bottom row, then 6-10 on
+// the row above, and so on, up to 50 at the top-right corner.
+[[nodiscard]] constexpr int displayLabel(Square sq) noexcept {
+    const int row = rowOf(sq);
+    const int col = colOf(sq);
+    const int firstPlayableCol = (row % 2 == 0) ? 1 : 0;
+    const int withinRow        = (col - firstPlayableCol) / 2;
+    return (kBoardSize - 1 - row) * 5 + withinRow + 1;
+}
+
+/// Inverse of displayLabel.
+[[nodiscard]] constexpr Square fromDisplayLabel(int label) noexcept {
+    const int row        = kBoardSize - 1 - (label - 1) / 5;
+    const int withinRow  = (label - 1) % 5;
+    const int firstCol   = (row % 2 == 0) ? 1 : 0;
+    const int col        = firstCol + withinRow * 2;
+    return indexFromRowCol(row, col);
+}
 // -- Initial setup bitboards --------------------------------------------------
 inline constexpr Bitboard kInitialRed    = (Bitboard{1} << 20) - 1;
 inline constexpr Bitboard kInitialYellow = ((Bitboard{1} << 20) - 1) << 30;

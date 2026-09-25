@@ -19,7 +19,7 @@ std::optional<Square> parseSquareToken(std::string_view s) {
     const auto r = std::from_chars(b, e, n);
     if (r.ec != std::errc{} || r.ptr != e) return std::nullopt;
     if (n < 1 || n > kNumPlayableSquares) return std::nullopt;
-    return static_cast<Square>(n - 1);
+    return bc::fromDisplayLabel(n);
 }
 
 void splitInto(std::string_view s, char sep, std::vector<std::string_view>& out) {
@@ -40,10 +40,10 @@ void splitInto(std::string_view s, char sep, std::vector<std::string_view>& out)
 
 std::string formatMove(const Board& boardBefore, Color side, const Move& move) {
     std::ostringstream os;
-    auto sq1 = [](Square s) { return static_cast<int>(s) + 1; };
+    auto lab = [](Square s) { return bc::displayLabel(s); };
 
     if (!move.isCapture()) {
-        os << sq1(move.from) << '-' << sq1(move.to);
+        os << lab(move.from) << '-' << lab(move.to);
         return os.str();
     }
 
@@ -51,15 +51,15 @@ std::string formatMove(const Board& boardBefore, Color side, const Move& move) {
     const bool ok = expandChainLandings(boardBefore, side, move,
                                         landings.data(),
                                         static_cast<int>(landings.size()));
-    os << sq1(move.from);
+    os << lab(move.from);
     if (ok) {
         for (std::size_t i = 1; i < landings.size(); ++i) {
             if (landings[i] == kInvalidSquare) break;
-            os << 'x' << sq1(landings[i]);
+            os << 'x' << lab(landings[i]);
             if (landings[i] == move.to) break;
         }
     } else {
-        os << 'x' << sq1(move.to);
+        os << 'x' << lab(move.to);
     }
     return os.str();
 }
@@ -105,7 +105,6 @@ std::optional<Move> parseMove(const Board&     board,
         return std::nullopt;
     }
 
-    // Capture chain: match from, to, and every intermediate landing.
     for (std::size_t i = 0; i < moves.size(); ++i) {
         const auto& m = moves[i];
         if (!m.isCapture()) continue;

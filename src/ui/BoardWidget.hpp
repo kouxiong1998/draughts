@@ -71,6 +71,7 @@ private:
     void drawHighlights(QPainter& p, int cell, const QPoint& origin) const;
     void drawPieces    (QPainter& p, int cell, const QPoint& origin) const;
     void drawPiecesAnimated(QPainter& p, int cell, const QPoint& origin) const;
+    void drawSquareLabels  (QPainter& p, int cell, const QPoint& origin) const;
 };
 
 } // namespace draughts::ui

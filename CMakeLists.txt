@@ -168,3 +168,11 @@ draughts_apply_warnings(selfplay_gen)
 add_executable(tuner tools/tuner.cpp)
 target_link_libraries(tuner PRIVATE draughts_ai)
 draughts_apply_warnings(tuner)
+# ---- Move dumper (diagnostic) ------------------------------------------------
+add_executable(dump_moves tools/dump_moves.cpp)
+target_link_libraries(dump_moves PRIVATE draughts_core)
+draughts_apply_warnings(dump_moves)
+# ---- Position dump (diagnostic) ----------------------------------------------
+add_executable(dump_position tools/dump_position.cpp)
+target_link_libraries(dump_position PRIVATE draughts_core)
+draughts_apply_warnings(dump_position)

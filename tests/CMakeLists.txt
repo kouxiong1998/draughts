@@ -17,6 +17,7 @@ add_executable(draughts_tests
     test_evaluator.cpp
     test_transposition.cpp
     test_search.cpp
+    test_capture_continuation.cpp
 )
 target_link_libraries(draughts_tests PRIVATE draughts_core draughts_ai Catch2::Catch2WithMain)
 
