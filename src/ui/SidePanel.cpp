@@ -403,12 +403,13 @@ void SidePanel::refresh() {
     }
 
     const auto& b = controller_->board();
-    const int redLost    = 20 - b.count(core::Color::Red,    core::PieceKind::Man)
-                              - b.count(core::Color::Red,    core::PieceKind::King);
-    const int yellowLost = 20 - b.count(core::Color::Yellow, core::PieceKind::Man)
-                              - b.count(core::Color::Yellow, core::PieceKind::King);
-    captureLabel_->setText(QString("Captured:  Red %1  /  Yellow %2")
-                            .arg(redLost).arg(yellowLost));
+    // Total pieces still on the board for each side (men + kings).
+    const int redLeft    = b.count(core::Color::Red,    core::PieceKind::Man)
+                         + b.count(core::Color::Red,    core::PieceKind::King);
+    const int yellowLeft = b.count(core::Color::Yellow, core::PieceKind::Man)
+                         + b.count(core::Color::Yellow, core::PieceKind::King);
+    captureLabel_->setText(QString("Remaining:  Red %1  /  Yellow %2")
+                            .arg(redLeft).arg(yellowLeft));
 
     switch (res) {
         case core::GameResult::Ongoing:
