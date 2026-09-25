@@ -107,11 +107,11 @@ void BoardWidget::drawHighlights(QPainter& p, int cell,
                                  const QPoint& origin) const
 {
     if (!controller_) return;
-    const auto& moves = controller_->selectionMoves();
+    const auto& squares = controller_->highlightSquares();
 
-    for (const auto& m : moves) {
-        int row = core::bc::rowOf(m.to);
-        int col = core::bc::colOf(m.to);
+    for (core::Square s : squares) {
+        int row = core::bc::rowOf(s);
+        int col = core::bc::colOf(s);
         if (rotated_) { row = Theme::kBoardSize - 1 - row;
                         col = Theme::kBoardSize - 1 - col; }
 
@@ -121,8 +121,7 @@ void BoardWidget::drawHighlights(QPainter& p, int cell,
                          r.center().y() - d/2.0, d, d);
 
         p.setPen(Qt::NoPen);
-        p.setBrush(m.isCapture() ? Theme::captureHighlight()
-                                 : Theme::legalMoveDot());
+        p.setBrush(Theme::legalMoveDot());
         p.drawEllipse(dot);
     }
 }

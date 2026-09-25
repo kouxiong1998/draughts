@@ -9,6 +9,7 @@
 #include <QMetaObject>
 
 #include <algorithm>
+#include <array>
 #include <random>
 
 namespace draughts::ui {
@@ -83,6 +84,8 @@ void GameController::loadOpeningBook() {
 void GameController::clearSelection() {
     selected_.reset();
     selectionMoves_.clear();
+    chainClicks_.clear();
+    highlightSquares_.clear();
 }
 
 // ?? Clock helpers ??????????????????????????????????????????????????????????
@@ -134,45 +137,118 @@ void GameController::setMode(controller::GameMode m) {
     maybeTriggerAI();
 }
 
+// Reconstruct a move's landing sequence: [from, land1, land2, ..., to].
+std::vector<core::Square> GameController::landingsOf(const core::Move& m) const {
+    std::vector<core::Square> out;
+    if (!m.isCapture()) {
+        out.push_back(m.from);
+        out.push_back(m.to);
+        return out;
+    }
+    std::array<core::Square, 32> buf{};
+    if (!core::expandChainLandings(engine_.board(), engine_.sideToMove(),
+                                   m, buf.data(),
+                                   static_cast<int>(buf.size()))) {
+        return out;
+    }
+    // expandChainLandings writes the correct landing sequence at the
+    // start of the buffer but leaves the rest as zeros. We must stop
+    // reading as soon as we reach the final landing square (m.to).
+    for (auto s : buf) {
+        if (s == core::kInvalidSquare) break;
+        out.push_back(s);
+        if (out.size() > 1 && s == m.to) break;
+    }
+    return out;
+}
+
+// Compute which squares to highlight as the next hop of the current chain.
+void GameController::recomputeHighlights() {
+    highlightSquares_.clear();
+    if (chainClicks_.empty()) return;
+
+    const std::size_t hopIndex = chainClicks_.size();
+    for (const auto& m : selectionMoves_) {
+        const auto seq = landingsOf(m);
+        if (seq.size() > hopIndex) {
+            const core::Square s = seq[hopIndex];
+            if (std::find(highlightSquares_.begin(),
+                          highlightSquares_.end(), s)
+                == highlightSquares_.end()) {
+                highlightSquares_.push_back(s);
+            }
+        }
+    }
+}
 void GameController::handleSquareClick(core::Square sq) {
-    if (replayMode_) return;   // clicks are ignored during replay
+    if (replayMode_) return;
     if (engine_.result() != core::GameResult::Ongoing) return;
     if (aiThinking_ || isAITurn()) return;
 
     const auto& b    = engine_.board();
     const auto  side = engine_.sideToMove();
 
-    if (selected_) {
-        const auto it = std::find_if(
-            selectionMoves_.begin(), selectionMoves_.end(),
-            [sq](const core::Move& m) { return m.to == sq; });
-        if (it != selectionMoves_.end()) {
-            const core::Move chosen = *it;
-            const core::Board preBoard = engine_.board();
+    // 1) Chain in progress: sq is a possible next hop.
+    if (selected_ && !chainClicks_.empty()) {
+        const bool isNextHop = std::find(highlightSquares_.begin(),
+                                         highlightSquares_.end(), sq)
+                               != highlightSquares_.end();
+        if (isNextHop) {
+            chainClicks_.push_back(sq);
 
-            ai_.stop(std::chrono::milliseconds(1500));
-
-            if (engine_.tryApply(chosen)) {
-                const auto& hist = engine_.history();
-                const auto& rec  = hist[engine_.historyCursor() - 1];
-
-                // Hand the clock over to the other side.
-                commitCurrentSlice();
-                if (engine_.result() == core::GameResult::Ongoing) {
-                    startClockFor(engine_.sideToMove());
-                } else {
-                    stopClock();
+            std::vector<core::Move> filtered;
+            for (const auto& m : selectionMoves_) {
+                const auto seq = landingsOf(m);
+                if (seq.size() < chainClicks_.size()) continue;
+                bool match = true;
+                for (std::size_t i = 0; i < chainClicks_.size(); ++i) {
+                    if (seq[i] != chainClicks_[i]) { match = false; break; }
                 }
+                if (match) filtered.push_back(m);
+            }
+            selectionMoves_ = std::move(filtered);
 
+            bool continues = false;
+            for (const auto& m : selectionMoves_) {
+                if (landingsOf(m).size() > chainClicks_.size()) {
+                    continues = true;
+                    break;
+                }
+            }
+
+            if (!continues) {
+                if (!selectionMoves_.empty()) {
+                    const core::Move chosen = selectionMoves_.front();
+                    const core::Board preBoard = engine_.board();
+                    ai_.stop(std::chrono::milliseconds(1500));
+                    if (engine_.tryApply(chosen)) {
+                        const auto& hist = engine_.history();
+                        const auto& rec  = hist[engine_.historyCursor() - 1];
+                        commitCurrentSlice();
+                        if (engine_.result() == core::GameResult::Ongoing) {
+                            startClockFor(engine_.sideToMove());
+                        } else {
+                            stopClock();
+                        }
+                        clearSelection();
+                        emit moveApplied(rec, preBoard);
+                        emit changed();
+                        maybeTriggerAI();
+                        return;
+                    }
+                }
                 clearSelection();
-                emit moveApplied(rec, preBoard);
                 emit changed();
-                maybeTriggerAI();
                 return;
             }
+
+            recomputeHighlights();
+            emit changed();
+            return;
         }
     }
 
+    // 2) Selecting a new piece.
     const auto p = b.at(sq);
     if (!p.empty() && p.color == side) {
         selected_ = sq;
@@ -181,6 +257,41 @@ void GameController::handleSquareClick(core::Square sq) {
         const auto moves = core::generateLegalMoves(b, side, engine_.rules());
         for (std::size_t i = 0; i < moves.size(); ++i)
             if (moves[i].from == sq) selectionMoves_.push_back(moves[i]);
+
+        if (selectionMoves_.empty()) {
+            clearSelection();
+            emit changed();
+            return;
+        }
+
+        const bool allQuiet = std::all_of(selectionMoves_.begin(),
+                                          selectionMoves_.end(),
+                                          [](const core::Move& m){ return !m.isCapture(); });
+        if (allQuiet && selectionMoves_.size() == 1) {
+            const core::Move chosen = selectionMoves_.front();
+            const core::Board preBoard = engine_.board();
+            ai_.stop(std::chrono::milliseconds(1500));
+            if (engine_.tryApply(chosen)) {
+                const auto& hist = engine_.history();
+                const auto& rec  = hist[engine_.historyCursor() - 1];
+                commitCurrentSlice();
+                if (engine_.result() == core::GameResult::Ongoing) {
+                    startClockFor(engine_.sideToMove());
+                } else {
+                    stopClock();
+                }
+                clearSelection();
+                emit moveApplied(rec, preBoard);
+                emit changed();
+                maybeTriggerAI();
+                return;
+            }
+        }
+
+        // Multiple quiet moves OR any capture chain: step-by-step.
+        chainClicks_.clear();
+        chainClicks_.push_back(sq);
+        recomputeHighlights();
 
         emit changed();
         return;

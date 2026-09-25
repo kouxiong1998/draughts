@@ -59,6 +59,13 @@ public:
         return selectionMoves_;
     }
 
+    /// Squares to highlight as the NEXT possible clicks in the current chain.
+    /// During the first click this is the set of first-hop landings across all
+    /// candidate chains. After each click it advances to the next hop.
+    [[nodiscard]] const std::vector<core::Square>& highlightSquares() const noexcept {
+        return highlightSquares_;
+    }
+
     [[nodiscard]] controller::GameMode mode() const noexcept { return mode_; }
     [[nodiscard]] core::Color humanColor()   const noexcept { return humanColor_; }
 
@@ -116,6 +123,8 @@ private:
     core::GameEngine            engine_{};
     std::optional<core::Square> selected_{};
     std::vector<core::Move>     selectionMoves_{};
+    std::vector<core::Square>   chainClicks_{};      // clicks so far, starting with the piece
+    std::vector<core::Square>   highlightSquares_{}; // next-hop squares to draw dots on
 
     controller::GameMode mode_{controller::GameMode::HumanVsHuman};
     core::Color          humanColor_{core::Color::Yellow};
@@ -139,6 +148,8 @@ private:
     bool           clockRunning_{false};
 
     void clearSelection();
+    void recomputeHighlights();
+    [[nodiscard]] std::vector<core::Square> landingsOf(const core::Move& m) const;
     void loadOpeningBook();
     void maybeTriggerAI();
     void launchAISearch();
