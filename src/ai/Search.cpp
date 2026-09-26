@@ -207,11 +207,24 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
             score = -negamax(next, opp, rules, depth - 1,
                              -beta, -alpha, ply + 1);
         } else {
-            // Null-window probe.
-            score = -negamax(next, opp, rules, depth - 1,
+            // Late Move Reduction: quiet moves ordered after the first
+            // few are searched at reduced depth. Draughts is zugzwang-
+            // prone, so we only reduce quiet moves, only after index 3,
+            // and only at depth >= 3. Any move whose reduced search
+            // beats alpha is re-searched at full depth, so the minimax
+            // value is unchanged.
+            int reduction = 0;
+            if (i >= 4 && depth >= 3 && !m.isCapture()) {
+                reduction = (i >= 8) ? 2 : 1;
+                if (reduction >= depth) reduction = depth - 1;
+            }
+
+            score = -negamax(next, opp, rules, depth - 1 - reduction,
                              -alpha - 1, -alpha, ply + 1);
-            // If the probe suggests this move might beat alpha, re-search
-            // with the full window.
+            if (reduction > 0 && score > alpha) {
+                score = -negamax(next, opp, rules, depth - 1,
+                                 -alpha - 1, -alpha, ply + 1);
+            }
             if (score > alpha && score < beta) {
                 score = -negamax(next, opp, rules, depth - 1,
                                  -beta, -alpha, ply + 1);
