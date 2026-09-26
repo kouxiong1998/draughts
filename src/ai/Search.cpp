@@ -240,12 +240,28 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
     core::Move bestMove{};
     const core::Color opp = core::opposite(side);
 
+    // Stage 5a - LMP + futility. Only quiet moves are pruned; captures
+    // and promotions are always searched. Mate windows disable both.
+    // i == 0 is never pruned so at least one candidate is always searched.
+    const bool mateWindow = std::abs(alpha) >= kMateScore - 1000 ||
+                            std::abs(beta)  >= kMateScore - 1000;
+    const bool futilityOn = (depth <= 2) && !mateWindow;
+    const int  futilityMargin = 100 * depth;
+    const int  futilityEval  = futilityOn ? evaluate(board, side, rules) : 0;
+    const std::size_t lmpLimit = (depth == 1) ? 4u : (depth == 2) ? 8u : 100000u;
+
     // Principal Variation Search (PVS): the first move gets the full window.
     // Every subsequent move gets a null-window (alpha, alpha+1) probe first;
     // if the probe beats alpha, re-search with the full window. Provably
     // correct - same minimax value as plain alpha-beta, fewer nodes visited.
     for (std::size_t i = 0; i < count; ++i) {
         const core::Move& m = scored[i].move;
+
+        // Stage 5a - quiet-move pruning at shallow depth.
+        if (i > 0 && !m.isCapture() && !m.isPromotion && !mateWindow) {
+            if (futilityOn && futilityEval + futilityMargin <= alpha) continue;
+            if (i >= lmpLimit) continue;
+        }
         core::Board next = board;
         applyMoveInPlace(next, m);
         const DrawContext nextDc = advanceDrawContext(board, next, m, dc);
