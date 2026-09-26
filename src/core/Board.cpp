@@ -58,6 +58,22 @@ namespace draughts::core {
         hash_ ^= Zobrist::instance().piece(c, PieceKind::King, sq);
     }
 
+    void Board::applyMove(const Move& m) noexcept {
+        if (m.from >= kNumPlayableSquares || m.to >= kNumPlayableSquares) return;
+
+        Bitboard cap = m.captured;
+        while (cap) {
+            const Square s = static_cast<Square>(std::countr_zero(cap));
+            cap &= cap - 1;
+            if (s < kNumPlayableSquares) removePiece(s);
+        }
+        if (empty(m.from)) return;
+        const Piece p = at(m.from);
+        removePiece(m.from);
+        setPiece(m.to, p.color, p.kind);
+        if (p.kind == PieceKind::Man && m.isPromotion) promote(m.to);
+    }
+
     void Board::recomputeHash() noexcept {
         hash_ = 0;
         Bitboard all = occupied_;

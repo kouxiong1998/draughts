@@ -26,13 +26,7 @@ namespace draughts::core {
                 if (m.isPromotion)  ++proms;
 
                 Board next = board;
-                // apply
-                Bitboard c = m.captured;
-                while (c) { const Square s = static_cast<Square>(std::countr_zero(c)); c &= c - 1; next.removePiece(s); }
-                const Piece p = next.at(m.from);
-                next.removePiece(m.from);
-                next.setPiece(m.to, p.color, p.kind);
-                if (p.kind == PieceKind::Man && m.isPromotion) next.promote(m.to);
+                next.applyMove(m);
 
                 perftRec(next, opposite(side), rules, depth - 1, nodes, caps, proms);
             }
@@ -55,12 +49,7 @@ namespace draughts::core {
         for (std::size_t i = 0; i < moves.size(); ++i) {
             const Move& m = moves[i];
             Board next = board;
-            Bitboard c = m.captured;
-            while (c) { const Square s = static_cast<Square>(std::countr_zero(c)); c &= c - 1; next.removePiece(s); }
-            const Piece p = next.at(m.from);
-            next.removePiece(m.from);
-            next.setPiece(m.to, p.color, p.kind);
-            if (p.kind == PieceKind::Man && m.isPromotion) next.promote(m.to);
+            next.applyMove(m);
 
             std::uint64_t n = 0, cc = 0, pp = 0;
             perftRec(next, opposite(side), rules, depth - 1, n, cc, pp);

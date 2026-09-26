@@ -213,7 +213,7 @@ int main(int argc, char** argv) {
     // ?? Fill each missing position ????????????????????????????????????????
     ai::TranspositionTable tt(1u << 22);   // 64 MB for the fill search
     std::atomic<bool>      stopFlag{false};
-    ai::Search search(&tt, nullptr, &stopFlag, nullptr);
+    ai::Search search(&tt, &stopFlag, nullptr);
 
     ai::TimeBudget budget;
     budget.soft     = std::chrono::seconds(120);

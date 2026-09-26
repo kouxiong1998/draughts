@@ -94,7 +94,7 @@ void threadWorker(const Options& opts,
 {
     ai::TranspositionTable tt(1u << 20);      // 16 MB per worker
     std::atomic<bool>      stopFlag{false};
-    ai::Search search(&tt, nullptr, &stopFlag, nullptr);
+    ai::Search search(&tt, &stopFlag, nullptr);
 
     ai::TimeBudget budget;
     budget.soft       = std::chrono::seconds(600);

@@ -58,7 +58,6 @@ add_library(draughts_ai STATIC
     src/ai/Evaluator.cpp
     src/ai/PST.cpp
     src/ai/OpeningBook.cpp
-    src/ai/EndgameTablebase.cpp
     src/ai/TranspositionTable.cpp
     src/ai/MoveOrdering.cpp
     src/ai/TimeManager.cpp

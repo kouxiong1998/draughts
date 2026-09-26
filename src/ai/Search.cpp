@@ -13,10 +13,9 @@
 namespace draughts::ai {
 
 Search::Search(TranspositionTable* sharedTT,
-               EndgameTablebase*    sharedTB,
                std::atomic<bool>*   stopFlag,
                ProgressFn           onProgress)
-    : tt_(sharedTT), tb_(sharedTB),
+    : tt_(sharedTT),
       stopFlag_(stopFlag), onProgress_(std::move(onProgress)) {}
 
 std::uint64_t Search::positionHash(const core::Board& board,
@@ -30,20 +29,7 @@ std::uint64_t Search::positionHash(const core::Board& board,
 }
 
 void Search::applyMoveInPlace(core::Board& board, const core::Move& m) const noexcept {
-    if (m.from >= core::kNumPlayableSquares || m.to >= core::kNumPlayableSquares)
-        return;
-
-    core::Bitboard cap = m.captured;
-    while (cap) {
-        const auto s = static_cast<core::Square>(std::countr_zero(cap));
-        cap &= cap - 1;
-        if (s < core::kNumPlayableSquares) board.removePiece(s);
-    }
-    if (board.empty(m.from)) return;
-    const auto p = board.at(m.from);
-    board.removePiece(m.from);
-    board.setPiece(m.to, p.color, p.kind);
-    if (p.kind == core::PieceKind::Man && m.isPromotion) board.promote(m.to);
+    board.applyMove(m);
 }
 
 void Search::scoreAndSort(ScoredMoveList& out, std::size_t& count,
@@ -115,23 +101,6 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
     ++nodes_;
     if ((nodes_ & 1023u) == 0 && timeMgr_.shouldStop()) return 0;
     if (ply >= kMaxPly - 1) return evaluate(board, side);
-
-    // ?? Endgame tablebase ??????????????????????????????????????????????????
-    // Only consulted when we actually have a TB (main thread) and the
-    // position is small enough. The TB is exact, so its answer is preferred
-    // over both the TT and the heuristic evaluation.
-    if (false && tb_ && std::popcount(board.occupied()) <= EndgameTablebase::kMaxPieces) {
-        if (const auto r = tb_->probe(board, side, rules)) {
-            switch (r->result) {
-                case TBResult::Win:
-                    return kMateScore - r->distance - ply;
-                case TBResult::Loss:
-                    return -kMateScore + r->distance + ply;
-                case TBResult::Draw:
-                    return 0;
-            }
-        }
-    }
 
     const std::uint64_t hash = positionHash(board, side, rules);
     const int alphaOrig = alpha;

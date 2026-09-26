@@ -14,7 +14,6 @@
 /// turn, then a real (non-silent) think benefits from the warmer TT.
 
 #include "OpeningBook.hpp"
-#include "EndgameTablebase.hpp"
 #include "Search.hpp"
 #include "TranspositionTable.hpp"
 #include "core/Board.hpp"
@@ -77,7 +76,6 @@ private:
     void onWorkerProgress(const SearchStats& s, int threadId);
 
     TranspositionTable tt_{1u << 24};  // 16M entries, ~400 MB
-    EndgameTablebase   tb_;            // solved in-memory cache, grows on demand
 
     std::jthread               worker_;
     std::atomic<bool>          stopFlag_{false};

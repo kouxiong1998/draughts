@@ -43,6 +43,11 @@ namespace draughts::core {
         void removePiece(Square sq) noexcept;
         void promote(Square sq) noexcept;
 
+        /// Apply a complete move: remove captured pieces, move the piece
+        /// from `m.from` to `m.to`, and promote a man if `m.isPromotion`.
+        /// Bounds-safe: out-of-range from/to is a no-op.
+        void applyMove(const Move& m) noexcept;
+
         // ── Zobrist ─────────────────────────────────────────────────────────────
         /// Hash of the current position (pieces only; side/rule are mixed in by
         /// GameState::hash()).

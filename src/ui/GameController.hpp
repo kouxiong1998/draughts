@@ -70,8 +70,7 @@ public:
     [[nodiscard]] core::Color humanColor()   const noexcept { return humanColor_; }
 
     [[nodiscard]] core::Color aiColor() const noexcept {
-        return humanColor_ == core::Color::Red ? core::Color::Yellow
-                                                : core::Color::Red;
+        return core::opposite(humanColor_);
     }
 
     [[nodiscard]] bool isAITurn() const noexcept {
