@@ -53,3 +53,7 @@ data/*.raw
 smoke_*.bin
 smoke_*.raw
 
+
+# Distribution builds
+dist/
+
