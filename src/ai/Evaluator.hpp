@@ -22,6 +22,12 @@ inline constexpr int kMobilityWeight = 2;
 /// gentle nudge; too high and the engine sacrifices material for trades.
 inline constexpr int kSimplifyWeight = 3;
 
+/// Blocked-man penalty: score penalty for each man whose both forward
+/// diagonal neighbours are occupied or off-board. These are "camped"
+/// pieces - they contribute no mobility and are the #1 symptom of a
+/// position that looks fine on material but is positionally lost.
+inline constexpr int kBlockedManPenalty = 15;
+
 /// Score the position for `sideToMove`. Return value is in centipawns;
 /// one man = 100.
 [[nodiscard]] int evaluate(const core::Board& board,

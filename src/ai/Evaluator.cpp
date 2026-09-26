@@ -44,6 +44,27 @@ inline int moveCount(const core::Board& b, core::Color side, core::RuleSet rules
     return static_cast<int>(core::generateLegalMoves(b, side, rules).size());
 }
 
+// A man is "blocked" when neither of its forward diagonals is an empty
+// playable square. Both neighbours occupied, or off-board, means the piece
+// cannot advance - the classic symptom of a position that will suffocate.
+inline int blockedMen(const core::Board& b, core::Color c) noexcept {
+    const core::Bitboard men = b.menMask(c);
+    const int dA = core::bc::forwardDirA(c);
+    const int dB = core::bc::forwardDirB(c);
+    int count = 0;
+    core::Bitboard bb = men;
+    while (bb) {
+        const auto sq = static_cast<core::Square>(std::countr_zero(bb));
+        bb &= bb - 1;
+        const auto a = core::bc::step(sq, dA);
+        const auto c2 = core::bc::step(sq, dB);
+        const bool aFree = (a != core::kInvalidSquare) && b.empty(a);
+        const bool bFree = (c2 != core::kInvalidSquare) && b.empty(c2);
+        if (!aFree && !bFree) ++count;
+    }
+    return count;
+}
+
 } // namespace
 
 int evaluate(const core::Board& board,
@@ -76,6 +97,15 @@ int evaluate(const core::Board& board,
                                + 3 * board.count(core::Color::Yellow, core::PieceKind::King));
         if (redMat > 0)      red += traded * kSimplifyWeight;
         else if (redMat < 0) red -= traded * kSimplifyWeight;
+    }
+
+    // Blocked-man penalty: men with neither forward diagonal empty.
+    // Computed for both sides so the term is antisymmetric between Red
+    // and Yellow - this preserves the negamax convention.
+    {
+        const int redBlocked = blockedMen(board, core::Color::Red);
+        const int yelBlocked = blockedMen(board, core::Color::Yellow);
+        red -= kBlockedManPenalty * (redBlocked - yelBlocked);
     }
 
 
