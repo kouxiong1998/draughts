@@ -3,6 +3,7 @@
 #include "MoveGenerator.hpp"
 
 #include <array>
+#include <functional>
 #include <charconv>
 #include <sstream>
 #include <vector>
@@ -123,4 +124,135 @@ std::optional<Move> parseMove(const Board&     board,
     return std::nullopt;
 }
 
+namespace {
+
+// Reconstruct the landing sequence of a capture chain:
+//   [from, hop1, hop2, ..., to]
+// Uses the board for geometry, respects ghost squares (already-captured
+// pieces remain on the board and can be landed on). Returns empty vector
+// on failure.
+std::vector<Square> reconstructChain(const Board& board, Color side,
+                                     const Move& move)
+{
+    std::vector<Square> path;
+    if (!move.isCapture()) {
+        path = {move.from, move.to};
+        return path;
+    }
+
+    const Piece p = board.at(move.from);
+    if (p.empty() || p.color != side) return path;
+
+    const bool isKing = (p.kind == PieceKind::King);
+    path.push_back(move.from);
+
+    std::function<bool(Square, Bitboard)> rec =
+        [&](Square cursor, Bitboard remaining) -> bool {
+            if (remaining == 0) return cursor == move.to;
+
+            const Bitboard ghosts = move.captured & ~remaining;
+
+            for (int d = 0; d < bc::kNumDirs; ++d) {
+                Square victim = kInvalidSquare;
+
+                if (isKing) {
+                    for (int k = 0; k < kBoardSize; ++k) {
+                        const Square s = bc::ray(cursor, d, k);
+                        if (s == kInvalidSquare) break;
+                        if (remaining & Board::bit(s)) { victim = s; break; }
+                        if (!board.empty(s) && !(ghosts & Board::bit(s))) break;
+                    }
+                } else {
+                    const Square v = bc::step(cursor, d);
+                    if (v != kInvalidSquare && (remaining & Board::bit(v)))
+                        victim = v;
+                }
+                if (victim == kInvalidSquare) continue;
+
+                if (isKing) {
+                    for (int k = 0; k < kBoardSize; ++k) {
+                        const Square landing = bc::ray(victim, d, k);
+                        if (landing == kInvalidSquare) break;
+                        if (!board.empty(landing)
+                            && !(ghosts & Board::bit(landing))) break;
+                        path.push_back(landing);
+                        if (rec(landing, remaining & ~Board::bit(victim)))
+                            return true;
+                        path.pop_back();
+                    }
+                } else {
+                    const Square landing = bc::step(victim, d);
+                    if (landing == kInvalidSquare) continue;
+                    path.push_back(landing);
+                    if (rec(landing, remaining & ~Board::bit(victim)))
+                        return true;
+                    path.pop_back();
+                }
+            }
+            return false;
+        };
+
+    if (!rec(move.from, move.captured)) path.clear();
+    return path;
+}
+
+} // namespace
+
+std::string formatMoveHistory(const Board& boardBefore, Color side, const Move& move) {
+    std::ostringstream os;
+
+    auto prefix = [](Color c, PieceKind k) -> std::string {
+        std::string p = (c == Color::Red) ? "R" : "Y";
+        if (k == PieceKind::King) p += "K";
+        return p;
+    };
+
+    const Piece mover = boardBefore.at(move.from);
+    if (mover.empty()) return "?";
+    const Color c = mover.color;
+    const PieceKind startKind = mover.kind;
+
+    if (!move.isCapture()) {
+        const bool promotes = (startKind == PieceKind::Man && move.isPromotion);
+        const PieceKind endKind = promotes ? PieceKind::King : startKind;
+        os << prefix(c, startKind) << bc::displayLabel(move.from)
+           << " - "
+           << prefix(c, endKind) << bc::displayLabel(move.to);
+        return os.str();
+    }
+
+    // Use expandChainLandings (the same routine the animation uses).
+    // It returns the full landing path starting with move.from and
+    // ending with move.to.
+    std::array<Square, 32> landings{};
+    const bool ok = expandChainLandings(boardBefore, side, move,
+                                        landings.data(),
+                                        static_cast<int>(landings.size()));
+
+    if (!ok) {
+        os << prefix(c, startKind) << bc::displayLabel(move.from)
+           << " X " << prefix(c, startKind) << bc::displayLabel(move.to);
+        return os.str();
+    }
+
+    // A capture chain has exactly 1 + captureCount() elements. Do not
+    // stop at the first occurrence of move.to - the first hop can
+    // coincide with the final landing (e.g. 24 -> 33 -> ... -> 33).
+    const std::size_t expected = 1
+        + static_cast<std::size_t>(move.captureCount());
+    os << prefix(c, startKind) << bc::displayLabel(landings[0]);
+    for (std::size_t i = 1; i < expected && i < landings.size(); ++i) {
+        const Square s = landings[i];
+        if (s == kInvalidSquare) break;
+
+        const bool isLastHop = (i + 1 == expected);
+        const bool promotesHere = isLastHop
+                                  && startKind == PieceKind::Man
+                                  && move.isPromotion;
+        const PieceKind hopKind = promotesHere ? PieceKind::King : startKind;
+
+        os << " X " << prefix(c, hopKind) << bc::displayLabel(s);
+    }
+    return os.str();
+}
 } // namespace draughts::core

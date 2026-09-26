@@ -151,13 +151,16 @@ std::vector<core::Square> GameController::landingsOf(const core::Move& m) const 
                                    static_cast<int>(buf.size()))) {
         return out;
     }
-    // expandChainLandings writes the correct landing sequence at the
-    // start of the buffer but leaves the rest as zeros. We must stop
-    // reading as soon as we reach the final landing square (m.to).
+    // A capture chain has exactly 1 + captureCount() elements: the start
+    // square plus one entry per captured piece. Stopping at move.to is
+    // wrong when the first hop coincides with the final landing
+    // (e.g. 24 -> 33 -> ... -> 33).
+    const std::size_t expected = 1
+        + static_cast<std::size_t>(m.captureCount());
     for (auto s : buf) {
         if (s == core::kInvalidSquare) break;
+        if (out.size() >= expected) break;
         out.push_back(s);
-        if (out.size() > 1 && s == m.to) break;
     }
     return out;
 }

@@ -85,8 +85,8 @@ namespace draughts::core {
         void resetInternal();
         void updateResultAfterMove();
         void updateSmallEndgameCounters(Color mover, bool movedKing, bool wasCapture) noexcept;
-        void applyMoveToBoard(const Move& move) noexcept;
-        void undoMoveFromBoard(const Move& move) noexcept;
+        void applyMoveToBoard(const Move& move, bool wasAlreadyKing) noexcept;
+        void undoMoveFromBoard(const Move& move, bool wasAlreadyKing) noexcept;
     };
 
 } // namespace draughts::core

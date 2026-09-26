@@ -21,6 +21,15 @@ namespace draughts::core {
                                      Color        side,
                                      const Move&  move);
 
+/// Format a move in the history-panel display style.
+///   Quiet:   "Y17 - Y23"    or   "RK1 - RK23"  (K = king)
+///   Capture: "Y23 X Y34"    or   "R11 X RK2"   (promotion on landing)
+///   Chain:   "Y1 X Y12 X Y23 X Y34 X Y43"
+/// Prefix per hop is R/Y for men, RK/YK for kings. Only the final landing
+/// of a promoting man is shown as RK/YK.
+[[nodiscard]] std::string formatMoveHistory(const Board& boardBefore,
+                                            Color        side,
+                                            const Move&  move);
 /// Number a ply as "1." / "1..." - Red moves are "N.", Yellow are "N...".
 [[nodiscard]] std::string formatMoveNumber(int ply, Color mover);
 

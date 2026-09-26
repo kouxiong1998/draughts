@@ -31,12 +31,10 @@ namespace draughts::core {
         return h;
     }
 
-    void GameEngine::applyMoveToBoard(const Move& m) noexcept {
+    void GameEngine::applyMoveToBoard(const Move& m, bool wasAlreadyKing) noexcept {
         const Piece p = board_.at(m.from);
         assert(!p.empty());
 
-        // Remove captured pieces FIRST (they are ghosts during the chain, but at
-        // end of chain they simply vanish).
         Bitboard cap = m.captured;
         while (cap) {
             const Square c = static_cast<Square>(std::countr_zero(cap));
@@ -47,28 +45,32 @@ namespace draughts::core {
         board_.removePiece(m.from);
         board_.setPiece(m.to, p.color, p.kind);
 
-        if (p.kind == PieceKind::Man && m.isPromotion) board_.promote(m.to);
+        // Promotion derived geometrically. Never trust the Move's
+        // isPromotion bit through undo/redo - it may have been rebuilt
+        // by the UI without that flag.
+        if (!wasAlreadyKing
+            && p.kind == PieceKind::Man
+            && bc::rowOf(m.to) == bc::promotionRow(p.color)) {
+            board_.promote(m.to);
+        }
     }
 
-    void GameEngine::undoMoveFromBoard(const Move& m) noexcept {
-        // Reconstruct the mover at `from` with the right kind.
+    void GameEngine::undoMoveFromBoard(const Move& m, bool wasAlreadyKing) noexcept {
         const Piece moved = board_.at(m.to);
         Color c = moved.color;
         PieceKind k = moved.kind;
 
-        // If the move promoted, undo the promotion.
-        bool wasPromotion = m.isPromotion && k == PieceKind::King;
-        if (wasPromotion) {
-            // Demote first (in-place through bitboard dance).
-            board_.removePiece(m.to);
+        // If the piece was a Man before this move but is a King now, it
+        // was promoted by this move.
+        const bool wasPromoted = !wasAlreadyKing && (k == PieceKind::King);
+
+        board_.removePiece(m.to);
+        if (wasPromoted) {
             board_.setPiece(m.from, c, PieceKind::Man);
-        }
-        else {
-            board_.removePiece(m.to);
+        } else {
             board_.setPiece(m.from, c, k);
         }
 
-        // Re-create captured pieces (colour == opposite of mover).
         const Color opp = opposite(c);
         Bitboard cap = m.captured;
         while (cap) {
@@ -85,11 +87,17 @@ namespace draughts::core {
         const Piece p = board_.at(move.from);
         if (p.empty() || p.color != mover) return false;
 
+        // Match against the engine's own generated move list, and
+        // use the generator's Move (not the caller's) for state
+        // changes and history. This guarantees isPromotion is correct
+        // even if the caller passed a move with a stale promotion flag.
         const MoveSpan legal = legalMoves();
         bool legalFound = false;
+        Move matched = move;
         for (std::size_t i = 0; i < legal.size(); ++i) {
             const Move& c = legal[i];
             if (c.from == move.from && c.to == move.to && c.captured == move.captured) {
+                matched = c;
                 legalFound = true; break;
             }
         }
@@ -99,13 +107,13 @@ namespace draughts::core {
         if (cursor_ < history_.size()) history_.resize(cursor_);
 
         const bool movedKing = p.kind == PieceKind::King;
-        const bool wasCap = move.isCapture();
+        const bool wasCap = matched.isCapture();
 
-        applyMoveToBoard(move);
+        applyMoveToBoard(matched, movedKing);
         state_.applyMoveBookkeeping(mover, movedKing, wasCap);
         state_.notePosition(positionHash());
 
-        history_.push_back(MoveRecord{ move, mover, movedKing, wasCap, positionHash() });
+        history_.push_back(MoveRecord{ matched, mover, movedKing, wasCap, positionHash() });
         ++cursor_;
 
         updateSmallEndgameCounters(mover, movedKing, wasCap);
@@ -116,7 +124,7 @@ namespace draughts::core {
     bool GameEngine::undo() noexcept {
         if (!canUndo()) return false;
         const MoveRecord& rec = history_[cursor_ - 1];
-        undoMoveFromBoard(rec.move);
+        undoMoveFromBoard(rec.move, rec.movedKing);
         --cursor_;
 
         // Rebuild state cleanly from scratch (cheap ??? game is short).
@@ -137,7 +145,7 @@ namespace draughts::core {
     bool GameEngine::redo() noexcept {
         if (!canRedo()) return false;
         const MoveRecord& rec = history_[cursor_];
-        applyMoveToBoard(rec.move);
+        applyMoveToBoard(rec.move, rec.movedKing);
         state_.applyMoveBookkeeping(rec.mover, rec.movedKing, rec.wasCapture);
         state_.notePosition(rec.positionHashAfter);
         ++cursor_;

@@ -80,18 +80,18 @@ void HistoryPanel::refresh() {
     const auto  cursor  = controller_->historyCursor();
 
     core::Board board; board.resetStandard();
-    core::Color side = core::Color::Red;
 
     for (std::size_t i = 0; i < history.size(); ++i) {
         const auto& rec = history[i];
 
-        const QString prefix = QString::fromStdString(
-            core::formatMoveNumber(static_cast<int>(i), rec.mover));
-        const QString text   = QString::fromStdString(
-            core::formatMove(board, side, rec.move));
+        // Use the recorded mover color (not a hard-coded Red). Otherwise,
+        // when Yellow moves first, the side parameter is off by one ply
+        // and expandChainLandings rejects every chain.
+        const QString text = QString::fromStdString(
+            core::formatMoveHistory(board, rec.mover, rec.move));
 
         auto* item = new QListWidgetItem(
-            QString("%1  %2  %3").arg(i + 1, 3).arg(prefix, -6).arg(text));
+            QString("%1: %2").arg(i + 1).arg(text));
         if (i >= cursor) item->setForeground(QColor(140, 140, 140));
         list_->addItem(item);
 
@@ -109,7 +109,6 @@ void HistoryPanel::refresh() {
         if (p.kind == core::PieceKind::Man && rec.move.isPromotion)
             next.promote(rec.move.to);
         board = next;
-        side  = core::opposite(side);
     }
 
     if (list_->count() > 0)
