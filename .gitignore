@@ -47,3 +47,9 @@ desktop.ini
 # Opening-book build intermediates
 data/*.raw
 
+
+# Ad-hoc test artifacts
+*.raw
+smoke_*.bin
+smoke_*.raw
+
