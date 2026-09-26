@@ -55,6 +55,15 @@ void Search::updateKillers(const core::Move& m, int ply) noexcept {
     slot[0] = m;
 }
 
+bool Search::isRepetitionInPath(std::uint64_t hash, int ply) const noexcept {
+    // Side to move alternates every ply, so the same position can only
+    // recur at an even distance back. Scan backward with stride 2.
+    for (int i = ply - 2; i >= 0; i -= 2) {
+        if (pathHashes_[static_cast<std::size_t>(i)] == hash) return true;
+    }
+    return false;
+}
+
 void Search::updateHistory(const core::Move& m, int depth) noexcept {
     if (m.from >= 50u || m.to >= 50u) return;
     const int bonus = depth * depth;
@@ -104,6 +113,11 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
 
     const std::uint64_t hash = positionHash(board, side, rules);
     const int alphaOrig = alpha;
+
+    if (ply > 0 && isRepetitionInPath(hash, ply)) {
+        return (side == rootSide_) ? -contempt_ : contempt_;
+    }
+    pathHashes_[static_cast<std::size_t>(ply)] = hash;
 
     // TT probe
     core::Move ttMove{};
@@ -242,6 +256,8 @@ SearchStats Search::think(const core::Board& board,
     for (auto& row : history_)  row.fill(0);
     nodes_  = 0;
     ttHits_ = 0;
+    rootSide_ = side;
+    pathHashes_[0] = positionHash(board, side, rules);
 
     const auto rootMoves = core::generateLegalMoves(board, side, rules);
     if (rootMoves.empty()) {
@@ -417,6 +433,8 @@ Search::topMoves(const core::Board& board,
     for (auto& row : history_)  row.fill(0);
     nodes_  = 0;
     ttHits_ = 0;
+    rootSide_ = side;
+    pathHashes_[0] = positionHash(board, side, rules);
 
     TimeBudget budget;
     budget.soft     = std::chrono::seconds(120);

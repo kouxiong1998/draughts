@@ -152,6 +152,8 @@ void AIEngine::runWorker(core::Board board, core::Color side, core::RuleSet rule
                 onWorkerProgress(s, threadId);
             });
 
+        search->setContempt(contempt_);
+
         (void)search->think(board, side, rules, budget, threadId);
     } catch (...) {
     }

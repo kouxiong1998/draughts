@@ -528,6 +528,18 @@ void GameController::launchAISearch() {
     tb.minimum = std::chrono::milliseconds(
         std::min(300, totalMs / 10));
 
+    // Material-aware contempt: when ahead, avoid draws; when behind, seek them.
+    {
+        const auto& b = engine_.board();
+        const core::Color my = engine_.sideToMove();
+        const core::Color opp = core::opposite(my);
+        const int myMat  = b.count(my,  core::PieceKind::Man)  + 3 * b.count(my,  core::PieceKind::King);
+        const int oppMat = b.count(opp, core::PieceKind::Man)  + 3 * b.count(opp, core::PieceKind::King);
+        const int diff = myMat - oppMat;
+        const int c = (diff > 0) ? +25 : (diff < 0 ? -25 : 0);
+        ai_.setContempt(c);
+    }
+
     ai_.think(engine_.board(), engine_.sideToMove(), engine_.rules(), tb);
 }
 

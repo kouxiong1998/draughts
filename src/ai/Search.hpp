@@ -49,6 +49,12 @@ public:
     /// be resumed after a crash without replaying previous games.
     void setSeed(std::uint64_t s) noexcept { rng_.seed(s); }
 
+    /// Contempt factor: a small score bonus/penalty applied to drawn
+    /// positions. Positive values make the engine avoid draws; negative
+    /// values make it seek draws; zero (the default) treats a draw as
+    /// a neutral outcome.
+    void setContempt(int c) noexcept { contempt_ = c; }
+
     /// Run a fixed-depth search and return the top-N scored moves,
     /// sorted by score descending. Used by the opening-book filler.
     [[nodiscard]] std::vector<std::pair<core::Move, int>>
@@ -78,6 +84,9 @@ private:
     std::array<std::array<int, 50>, 50>            history_{};
     std::uint64_t nodes_{0};
     std::uint64_t ttHits_{0};
+    core::Color rootSide_{core::Color::Red};
+    int         contempt_{0};
+    std::array<std::uint64_t, kMaxPly> pathHashes_{};
 
     int  negamax(const core::Board& board, core::Color side, core::RuleSet rules,
                  int depth, int alpha, int beta, int ply);
@@ -96,6 +105,7 @@ private:
 
     void updateKillers(const core::Move& m, int ply) noexcept;
     void updateHistory(const core::Move& m, int depth) noexcept;
+    [[nodiscard]] bool isRepetitionInPath(std::uint64_t hash, int ply) const noexcept;
 };
 
 } // namespace draughts::ai

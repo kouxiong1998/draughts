@@ -68,6 +68,11 @@ public:
 
     void clearTT() noexcept { tt_.clear(); }
 
+    /// Contempt factor passed to every Search. Positive = avoid draws
+    /// (play for a win), negative = seek draws, zero = neutral.
+    void setContempt(int c) noexcept { contempt_ = c; }
+    [[nodiscard]] int contempt() const noexcept { return contempt_; }
+
 private:
     void runSMP(core::Board board, core::Color side, core::RuleSet rules,
                 TimeBudget budget, std::uint64_t generation, bool silent);
@@ -82,6 +87,7 @@ private:
     std::atomic<bool>          thinking_{false};
     std::atomic<std::uint64_t> generation_{0};
     int                        threadCount_{4};
+    int                        contempt_{0};
 
     const OpeningBook*         book_{nullptr};
     std::mt19937_64            bookRng_{std::random_device{}()};
