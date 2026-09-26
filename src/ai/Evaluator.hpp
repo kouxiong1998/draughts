@@ -17,6 +17,11 @@ inline constexpr int kKingValue = 300;
 /// play, but too high causes the engine to prefer moving over material.
 inline constexpr int kMobilityWeight = 2;
 
+/// Simplify-when-ahead weight: score bonus for the stronger side per traded
+/// piece. Higher = stronger side trades more eagerly. 3 cp per trade is a
+/// gentle nudge; too high and the engine sacrifices material for trades.
+inline constexpr int kSimplifyWeight = 3;
+
 /// Score the position for `sideToMove`. Return value is in centipawns;
 /// one man = 100.
 [[nodiscard]] int evaluate(const core::Board& board,

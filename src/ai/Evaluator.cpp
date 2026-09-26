@@ -63,6 +63,22 @@ int evaluate(const core::Board& board,
     const int yelMob = moveCount(board, core::Color::Yellow, rules);
     red += kMobilityWeight * (redMob - yelMob);
 
+    // Simplify-when-ahead: the side with more material benefits from trades,
+    // because fewer pieces = easier to convert the advantage. The weaker
+    // side prefers a crowded board to keep complications alive. Capped at
+    // 20 trades so the term stays a nudge, not a dominant factor.
+    {
+        const int total     = std::popcount(board.occupied());
+        const int traded    = std::min(40 - total, 20);
+        const int redMat    = (board.count(core::Color::Red,    core::PieceKind::Man)
+                               + 3 * board.count(core::Color::Red,    core::PieceKind::King))
+                            - (board.count(core::Color::Yellow, core::PieceKind::Man)
+                               + 3 * board.count(core::Color::Yellow, core::PieceKind::King));
+        if (redMat > 0)      red += traded * kSimplifyWeight;
+        else if (redMat < 0) red -= traded * kSimplifyWeight;
+    }
+
+
     return sideToMove == core::Color::Red ? red : -red;
 }
 
