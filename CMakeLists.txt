@@ -159,3 +159,12 @@ if(DRAUGHTS_BUILD_UI)
     set_target_properties(ai_ui_sim PROPERTIES WIN32_EXECUTABLE FALSE)
     draughts_apply_warnings(ai_ui_sim)
 endif()
+
+# ---- Opening-book generator --------------------------------------------------
+add_executable(bookgen tools/bookgen.cpp)
+target_link_libraries(bookgen PRIVATE draughts_ai)
+draughts_apply_warnings(bookgen)
+# ---- Opening-book merger -----------------------------------------------------
+add_executable(bookmerge tools/bookmerge.cpp)
+target_link_libraries(bookmerge PRIVATE draughts_ai)
+draughts_apply_warnings(bookmerge)

@@ -16,6 +16,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <random>
 
 namespace draughts::ai {
 
@@ -57,6 +58,7 @@ private:
     EndgameTablebase*   tb_{nullptr};
     std::atomic<bool>*  stopFlag_{nullptr};
     ProgressFn          onProgress_;
+    std::mt19937_64    rng_{std::random_device{}()};
     TimeManager         timeMgr_{TimeBudget{}, nullptr};
 
     std::array<std::array<core::Move, 2>, kMaxPly> killers_{};

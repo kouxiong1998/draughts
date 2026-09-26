@@ -5,6 +5,7 @@
 #include "core/Zobrist.hpp"
 
 #include <algorithm>
+#include <random>
 #include <bit>
 #include <thread>
 
@@ -369,6 +370,9 @@ SearchStats Search::think(const core::Board& board,
         stats.completed = true;
         if (onProgress_) onProgress_(stats);
 
+        // Respect an explicit depth cap if the caller set one.
+        if (budget.maxDepth > 0 && depth >= budget.maxDepth) break;
+
         if (!timeMgr_.canStartNextIter()) break;
         if (std::abs(bestScore) > kMateScore - 100) break;
     }
@@ -387,6 +391,42 @@ SearchStats Search::think(const core::Board& board,
     stats.elapsed  = timeMgr_.elapsed();
     stats.depth    = lastFullDepth;
     stats.bestMove = bestMove;
+
+    // Optional random pick among near-best root moves (book generation).
+    if (budget.randomTopN > 0 && lastFullDepth > 0 && !rootMoves.empty()) {
+        std::vector<std::pair<int, core::Move>> scored;
+        scored.reserve(rootMoves.size());
+        const core::Color opp2 = core::opposite(side);
+        for (std::size_t i = 0; i < rootMoves.size(); ++i) {
+            core::Board next = board;
+            applyMoveInPlace(next, rootMoves[i]);
+            const int s = -negamax(next, opp2, rules, lastFullDepth - 1,
+                                   -kMateScore - 1, kMateScore + 1, 1);
+            if (timeMgr_.shouldStop()) break;
+            scored.emplace_back(s, rootMoves[i]);
+        }
+        if (!scored.empty()) {
+            std::sort(scored.begin(), scored.end(),
+                      [](const auto& a, const auto& b) {
+                          return a.first > b.first;
+                      });
+            const int bestS = scored.front().first;
+            const int n = std::min<int>(budget.randomTopN,
+                                        static_cast<int>(scored.size()));
+            std::vector<core::Move> candidates;
+            for (int k = 0; k < n; ++k) {
+                if (bestS - scored[static_cast<std::size_t>(k)].first
+                    <= budget.randomEps) {
+                    candidates.push_back(scored[static_cast<std::size_t>(k)].second);
+                }
+            }
+            if (!candidates.empty()) {
+                std::uniform_int_distribution<std::size_t> dist(0, candidates.size() - 1);
+                stats.bestMove = candidates[dist(rng_)];
+            }
+        }
+    }
+
     return stats;
 }
 
