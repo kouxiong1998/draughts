@@ -28,6 +28,18 @@ inline constexpr int kSimplifyWeight = 3;
 /// position that looks fine on material but is positionally lost.
 inline constexpr int kBlockedManPenalty = 15;
 
+/// Man-advance weight: score per row a man has advanced toward promotion.
+/// Only active when the board has <= kManAdvanceLimit pieces so it never
+/// interferes with the midgame.
+inline constexpr int kManAdvanceWeight = 6;
+inline constexpr int kManAdvanceLimit  = 16;
+
+/// King-edge-pressure weight: bonus for pushing the opponent's kings
+/// toward the edge in king-only endings, and for keeping mine central.
+/// Only active when one side has no men and total pieces <= 10.
+inline constexpr int kKingEdgeWeight  = 8;
+inline constexpr int kKingEdgeLimit   = 10;
+
 /// Score the position for `sideToMove`. Return value is in centipawns;
 /// one man = 100.
 [[nodiscard]] int evaluate(const core::Board& board,

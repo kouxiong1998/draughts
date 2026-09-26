@@ -116,6 +116,53 @@ int evaluate(const core::Board& board,
     }
 
 
+    // Endgame terms - only active in sparse positions to avoid
+    // changing the midgame. Both are exactly antisymmetric between
+    // Red and Yellow, preserving the negamax convention.
+    {
+        const int totalPieces = std::popcount(board.occupied());
+
+        // Man advance: every row closer to promotion is worth a little.
+        // Gives the engine a gradient to push men home in endings.
+        if (totalPieces <= kManAdvanceLimit) {
+            core::Bitboard rm = board.menMask(core::Color::Red);
+            while (rm) {
+                const auto sq = static_cast<core::Square>(std::countr_zero(rm));
+                rm &= rm - 1;
+                red += kManAdvanceWeight * core::bc::rowOf(sq);
+            }
+            core::Bitboard ym = board.menMask(core::Color::Yellow);
+            while (ym) {
+                const auto sq = static_cast<core::Square>(std::countr_zero(ym));
+                ym &= ym - 1;
+                red -= kManAdvanceWeight * (9 - core::bc::rowOf(sq));
+            }
+        }
+
+        // King centralization: in sparse positions a central king
+        // dominates, an edge king is nearly trapped. Distance-to-edge
+        // in 0..4 gives a natural gradient.
+        if (totalPieces <= kKingEdgeLimit) {
+            auto edgeDist = [](core::Square sq) {
+                const int r = core::bc::rowOf(sq);
+                const int c = core::bc::colOf(sq);
+                return std::min(std::min(r, 9 - r), std::min(c, 9 - c));
+            };
+            core::Bitboard rk = board.kingsMask(core::Color::Red);
+            while (rk) {
+                const auto sq = static_cast<core::Square>(std::countr_zero(rk));
+                rk &= rk - 1;
+                red += kKingEdgeWeight * edgeDist(sq);
+            }
+            core::Bitboard yk = board.kingsMask(core::Color::Yellow);
+            while (yk) {
+                const auto sq = static_cast<core::Square>(std::countr_zero(yk));
+                yk &= yk - 1;
+                red -= kKingEdgeWeight * edgeDist(sq);
+            }
+        }
+    }
+
     return sideToMove == core::Color::Red ? red : -red;
 }
 
