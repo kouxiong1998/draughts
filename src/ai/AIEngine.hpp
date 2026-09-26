@@ -60,7 +60,8 @@ public:
                core::Color        side,
                core::RuleSet      rules,
                TimeBudget         budget = {},
-               bool               silent = false);
+               bool               silent = false,
+               DrawContext        dc     = {});
 
     bool stop(std::chrono::milliseconds wait = std::chrono::milliseconds(500));
 
@@ -75,9 +76,11 @@ public:
 
 private:
     void runSMP(core::Board board, core::Color side, core::RuleSet rules,
-                TimeBudget budget, std::uint64_t generation, bool silent);
+                TimeBudget budget, std::uint64_t generation, bool silent,
+                DrawContext dc);
     void runWorker(core::Board board, core::Color side, core::RuleSet rules,
-                   TimeBudget budget, int threadId, bool silent);
+                   TimeBudget budget, int threadId, bool silent,
+                   DrawContext dc);
     void onWorkerProgress(const SearchStats& s, int threadId);
 
     TranspositionTable tt_{1u << 24};  // 16M entries, ~400 MB

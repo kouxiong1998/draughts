@@ -540,7 +540,17 @@ void GameController::launchAISearch() {
         ai_.setContempt(c);
     }
 
-    ai_.think(engine_.board(), engine_.sideToMove(), engine_.rules(), tb);
+    // Pass current draw counters from the rules engine so the search sees
+    // the same draw boundaries the game will. Rebuilt every launch, so
+    // undo / redo / restart / mode-change are all automatically correct.
+    const auto gc = engine_.drawCounters();
+    ai::DrawContext dc{};
+    dc.halfmove  = gc.halfmove;
+    dc.kings3v1  = gc.kings3v1;
+    dc.kings2v1  = gc.kings2v1;
+    dc.fourPiece = gc.fourPiece;
+    ai_.think(engine_.board(), engine_.sideToMove(), engine_.rules(), tb,
+              /*silent=*/false, dc);
 }
 
 void GameController::startPonder() {
@@ -552,9 +562,14 @@ void GameController::startPonder() {
     pb.soft    = kPonderSoft;
     pb.hard    = kPonderHard;
     pb.minimum = std::chrono::milliseconds(100);
-
+    const auto gc = engine_.drawCounters();
+    ai::DrawContext dc{};
+    dc.halfmove  = gc.halfmove;
+    dc.kings3v1  = gc.kings3v1;
+    dc.kings2v1  = gc.kings2v1;
+    dc.fourPiece = gc.fourPiece;
     ai_.think(engine_.board(), engine_.sideToMove(), engine_.rules(), pb,
-              /*silent=*/true);
+              /*silent=*/true, dc);
 }
 
 void GameController::playMoveFromAI(const core::Move& move) {

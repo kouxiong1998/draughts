@@ -36,6 +36,16 @@ struct SearchStats {
 
 using ProgressFn = std::function<void(const SearchStats&)>;
 
+/// Path-dependent draw counters carried through the search. Every ply
+/// these advance exactly like GameEngine does, so a position that would
+/// be declared a draw by the rules is scored as a draw inside the search.
+struct DrawContext {
+    int halfmove {0};   // 25-move rule: 50 consecutive king-only plies
+    int kings3v1 {0};   // FMJD 3v1 king endgame: 32 plies
+    int kings2v1 {0};   // FMJD 2v1 king endgame: 10 plies
+    int fourPiece{0};   // FMJD 4-piece rule: 40 plies
+};
+
 class Search {
 public:
     /// `sharedTT` must outlive this Search. `stopFlag` is shared across
@@ -54,6 +64,10 @@ public:
     /// values make it seek draws; zero (the default) treats a draw as
     /// a neutral outcome.
     void setContempt(int c) noexcept { contempt_ = c; }
+
+    /// Draw counters for the current game path. The search advances
+    /// these on every ply and treats counter limits as draws.
+    void setDrawContext(const DrawContext& dc) noexcept { rootDraw_ = dc; }
 
     /// Run a fixed-depth search and return the top-N scored moves,
     /// sorted by score descending. Used by the opening-book filler.
@@ -87,9 +101,10 @@ private:
     core::Color rootSide_{core::Color::Red};
     int         contempt_{0};
     std::array<std::uint64_t, kMaxPly> pathHashes_{};
+    DrawContext rootDraw_{};
 
     int  negamax(const core::Board& board, core::Color side, core::RuleSet rules,
-                 int depth, int alpha, int beta, int ply);
+                 int depth, int alpha, int beta, int ply, DrawContext dc);
     int  quiescence(const core::Board& board, core::Color side, core::RuleSet rules,
                     int alpha, int beta, int ply);
 
@@ -106,6 +121,10 @@ private:
     void updateKillers(const core::Move& m, int ply) noexcept;
     void updateHistory(const core::Move& m, int depth) noexcept;
     [[nodiscard]] bool isRepetitionInPath(std::uint64_t hash, int ply) const noexcept;
+    [[nodiscard]] static DrawContext advanceDrawContext(const core::Board& pre,
+                                                      const core::Board& post,
+                                                      const core::Move&  m,
+                                                      DrawContext        dc) noexcept;
 };
 
 } // namespace draughts::ai

@@ -70,6 +70,47 @@ void Search::updateHistory(const core::Move& m, int depth) noexcept {
     history_[m.from][m.to] = std::min(history_[m.from][m.to] + bonus, 100'000);
 }
 
+// Advance the draw counters exactly as GameEngine does, so any position
+// the rules engine would declare drawn is also scored as a draw inside
+// the search. Bug-for-bug parity with GameEngine::updateSmallEndgameCounters
+// is intentional - the two must agree.
+DrawContext Search::advanceDrawContext(const core::Board& pre,
+                                        const core::Board& post,
+                                        const core::Move&  m,
+                                        DrawContext        dc) noexcept
+{
+    const bool wasCapture = m.isCapture();
+    const bool movedKing  = (pre.at(m.from).kind == core::PieceKind::King);
+
+    if (wasCapture || !movedKing) dc.halfmove = 0;
+    else                          ++dc.halfmove;
+
+    if (wasCapture || !movedKing) {
+        dc.kings3v1 = 0;
+        dc.kings2v1 = 0;
+    } else {
+        const int rK = post.count(core::Color::Red,    core::PieceKind::King);
+        const int yK = post.count(core::Color::Yellow, core::PieceKind::King);
+        const int rM = post.count(core::Color::Red,    core::PieceKind::Man);
+        const int yM = post.count(core::Color::Yellow, core::PieceKind::Man);
+        const bool kingsOnly = (rM == 0 && yM == 0);
+        if (!kingsOnly) {
+            dc.kings3v1 = 0;
+            dc.kings2v1 = 0;
+        } else if (rK + yK == 4 && (rK == 3 || yK == 3)) {
+            ++dc.kings3v1; dc.kings2v1 = 0;
+        } else if (rK + yK == 3 && (rK == 2 || yK == 2)) {
+            ++dc.kings2v1; dc.kings3v1 = 0;
+        } else {
+            dc.kings3v1 = 0; dc.kings2v1 = 0;
+        }
+        const int total = rK + yK + rM + yM;
+        if (total != 4) dc.fourPiece = 0;
+        else            ++dc.fourPiece;
+    }
+    return dc;
+}
+
 // ?? Quiescence: forced-capture resolution only ????????????????????????????
 int Search::quiescence(const core::Board& board, core::Color side, core::RuleSet rules,
                        int alpha, int beta, int ply)
@@ -105,8 +146,14 @@ int Search::quiescence(const core::Board& board, core::Color side, core::RuleSet
 //    window. Slower than a fully-optimized search, but provably correct
 //    and ? critically ? does not silently skip tactics. ????????????????
 int Search::negamax(const core::Board& board, core::Color side, core::RuleSet rules,
-                    int depth, int alpha, int beta, int ply)
+                    int depth, int alpha, int beta, int ply, DrawContext dc)
 {
+    // Rule-based draw counters: mirror GameEngine. Any counter reaching its
+    // limit is a draw. Scored with contempt so the stronger side avoids it.
+    if (dc.halfmove >= 50 || dc.kings3v1 >= 32 ||
+        dc.kings2v1 >= 10 || dc.fourPiece >= 40) {
+        return (side == rootSide_) ? -contempt_ : contempt_;
+    }
     ++nodes_;
     if ((nodes_ & 1023u) == 0 && timeMgr_.shouldStop()) return 0;
     if (ply >= kMaxPly - 1) return evaluate(board, side, rules);
@@ -151,7 +198,7 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
         && ttMove.from >= core::kNumPlayableSquares) {
         const int iidDepth = depth >= 8 ? depth / 2 : depth - 2;
         if (iidDepth > 0) {
-            (void)negamax(board, side, rules, iidDepth, alpha, beta, ply);
+            (void)negamax(board, side, rules, iidDepth, alpha, beta, ply, dc);
             // Re-probe the TT ? the shallow search may have stored a move.
             TTEntry entry2{};
             if (tt_->probe(hash, entry2)) {
@@ -201,11 +248,12 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
         const core::Move& m = scored[i].move;
         core::Board next = board;
         applyMoveInPlace(next, m);
+        const DrawContext nextDc = advanceDrawContext(board, next, m, dc);
 
         int score;
         if (i == 0) {
             score = -negamax(next, opp, rules, depth - 1,
-                             -beta, -alpha, ply + 1);
+                             -beta, -alpha, ply + 1, nextDc);
         } else {
             // Late Move Reduction: quiet moves ordered after the first
             // few are searched at reduced depth. Draughts is zugzwang-
@@ -220,14 +268,14 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
             }
 
             score = -negamax(next, opp, rules, depth - 1 - reduction,
-                             -alpha - 1, -alpha, ply + 1);
+                             -alpha - 1, -alpha, ply + 1, nextDc);
             if (reduction > 0 && score > alpha) {
                 score = -negamax(next, opp, rules, depth - 1,
-                                 -alpha - 1, -alpha, ply + 1);
+                                 -alpha - 1, -alpha, ply + 1, nextDc);
             }
             if (score > alpha && score < beta) {
                 score = -negamax(next, opp, rules, depth - 1,
-                                 -beta, -alpha, ply + 1);
+                                 -beta, -alpha, ply + 1, nextDc);
             }
         }
 
@@ -321,13 +369,16 @@ SearchStats Search::think(const core::Board& board,
             const int rootBeta  = aspBeta;
             bool      failLow   = true;
 
+            DrawContext dc = rootDraw_;
+
             for (std::size_t i = 0; i < count; ++i) {
                 const core::Move& m = scored[i].move;
                 core::Board next = board;
                 applyMoveInPlace(next, m);
+        const DrawContext nextDc = advanceDrawContext(board, next, m, dc);
 
                 const int score = -negamax(next, core::opposite(side), rules,
-                                           depth - 1, -rootBeta, -rootAlpha, 1);
+                                           depth - 1, -rootBeta, -rootAlpha, 1, nextDc);
                 if (timeMgr_.shouldStop()) { aborted = true; break; }
 
                 if (score > localBest) {
@@ -400,7 +451,7 @@ SearchStats Search::think(const core::Board& board,
             core::Board next = board;
             applyMoveInPlace(next, rootMoves[i]);
             const int s = -negamax(next, opp2, rules, lastFullDepth - 1,
-                                   -kMateScore - 1, kMateScore + 1, 1);
+                                   -kMateScore - 1, kMateScore + 1, 1, rootDraw_);
             if (timeMgr_.shouldStop()) break;
             scored.emplace_back(s, rootMoves[i]);
         }
@@ -463,7 +514,7 @@ Search::topMoves(const core::Board& board,
         core::Board next = board;
         applyMoveInPlace(next, rootMoves[i]);
         const int s = -negamax(next, opp, rules, depth - 1,
-                               -kMateScore - 1, kMateScore + 1, 1);
+                               -kMateScore - 1, kMateScore + 1, 1, rootDraw_);
         if (stopFlag_ && stopFlag_->load()) break;
         out.emplace_back(rootMoves[i], s);
     }

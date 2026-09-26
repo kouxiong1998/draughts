@@ -46,7 +46,8 @@ void AIEngine::think(const core::Board& board,
                      core::Color        side,
                      core::RuleSet      rules,
                      TimeBudget         budget,
-                     bool               silent)
+                     bool               silent,
+                     DrawContext        dc)
 {
     const std::uint64_t myGen = ++generation_;
 
@@ -98,13 +99,14 @@ void AIEngine::think(const core::Board& board,
     }
 
     worker_ = std::jthread(
-        [this, board, side, rules, budget, myGen, silent]() {
-            runSMP(board, side, rules, budget, myGen, silent);
+        [this, board, side, rules, budget, myGen, silent, dc]() {
+            runSMP(board, side, rules, budget, myGen, silent, dc);
         });
 }
 
 void AIEngine::runSMP(core::Board board, core::Color side, core::RuleSet rules,
-                      TimeBudget budget, std::uint64_t myGen, bool silent)
+                      TimeBudget budget, std::uint64_t myGen, bool silent,
+                      DrawContext dc)
 {
     thinking_.store(true, std::memory_order_relaxed);
 
@@ -114,8 +116,8 @@ void AIEngine::runSMP(core::Board board, core::Color side, core::RuleSet rules,
         std::vector<std::jthread> workers;
         workers.reserve(static_cast<std::size_t>(n));
         for (int i = 0; i < n; ++i) {
-            workers.emplace_back([this, board, side, rules, budget, i, silent]() {
-                runWorker(board, side, rules, budget, i, silent);
+            workers.emplace_back([this, board, side, rules, budget, i, silent, dc]() {
+                runWorker(board, side, rules, budget, i, silent, dc);
             });
         }
     }
@@ -143,7 +145,8 @@ void AIEngine::runSMP(core::Board board, core::Color side, core::RuleSet rules,
 }
 
 void AIEngine::runWorker(core::Board board, core::Color side, core::RuleSet rules,
-                         TimeBudget budget, int threadId, bool silent)
+                         TimeBudget budget, int threadId, bool silent,
+                         DrawContext dc)
 {
     try {
         auto search = std::make_unique<Search>(
@@ -153,6 +156,7 @@ void AIEngine::runWorker(core::Board board, core::Color side, core::RuleSet rule
             });
 
         search->setContempt(contempt_);
+        search->setDrawContext(dc);
 
         (void)search->think(board, side, rules, budget, threadId);
     } catch (...) {
