@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <unordered_map>
@@ -152,13 +153,22 @@ int main(int argc, char** argv) {
 
     RawHeader hdr{};
     f.read(reinterpret_cast<char*>(&hdr), sizeof(hdr));
-    if (std::memcmp(hdr.magic, "DBKG", 4) != 0 || hdr.version != 1 ||
+    if (std::memcmp(hdr.magic, "DBKG", 4) != 0 ||
+        (hdr.version != 1 && hdr.version != 2) ||
         hdr.recordSize != sizeof(RawRecord)) {
         std::fprintf(stderr, "bad input format\n"); return 1;
     }
 
-    std::printf("Reading %llu raw records...\n",
-                (unsigned long long)hdr.recordCount);
+    // v2 format stores gamesCompleted, not recordCount. Compute the
+    // number of records from file size (32-byte header + N x 32-byte records).
+    const auto fileSize = std::filesystem::file_size(o.in);
+    const std::uint64_t expectedRecords =
+        (fileSize > sizeof(RawHeader))
+            ? (fileSize - sizeof(RawHeader)) / sizeof(RawRecord)
+            : 0;
+
+    std::printf("Reading ~%llu raw records...\n",
+                (unsigned long long)expectedRecords);
     std::fflush(stdout);
 
     // Aggregation map: position hash -> per-move counts.

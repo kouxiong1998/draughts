@@ -5,6 +5,7 @@
 #include "core/Zobrist.hpp"
 
 #include <algorithm>
+#include <utility>
 #include <random>
 #include <bit>
 #include <thread>
@@ -428,6 +429,51 @@ SearchStats Search::think(const core::Board& board,
     }
 
     return stats;
+}
+
+std::vector<std::pair<core::Move, int>>
+Search::topMoves(const core::Board& board,
+                 core::Color        side,
+                 core::RuleSet      rules,
+                 int                depth,
+                 int                N)
+{
+    std::vector<std::pair<core::Move, int>> out;
+    if (depth <= 0 || N <= 0) return out;
+
+    const auto rootMoves = core::generateLegalMoves(board, side, rules);
+    if (rootMoves.empty()) return out;
+
+    for (auto& slot : killers_) slot = {core::Move{}, core::Move{}};
+    for (auto& row : history_)  row.fill(0);
+    nodes_  = 0;
+    ttHits_ = 0;
+
+    TimeBudget budget;
+    budget.soft     = std::chrono::seconds(120);
+    budget.hard     = std::chrono::seconds(120);
+    budget.minimum  = std::chrono::milliseconds(0);
+    budget.maxDepth = depth;
+    timeMgr_ = TimeManager(budget, stopFlag_);
+    timeMgr_.start();
+
+    const core::Color opp = core::opposite(side);
+
+    for (std::size_t i = 0; i < rootMoves.size(); ++i) {
+        core::Board next = board;
+        applyMoveInPlace(next, rootMoves[i]);
+        const int s = -negamax(next, opp, rules, depth - 1,
+                               -kMateScore - 1, kMateScore + 1, 1);
+        if (stopFlag_ && stopFlag_->load()) break;
+        out.emplace_back(rootMoves[i], s);
+    }
+
+    std::sort(out.begin(), out.end(),
+              [](const auto& a, const auto& b) {
+                  return a.second > b.second;
+              });
+    if (static_cast<int>(out.size()) > N) out.resize(static_cast<std::size_t>(N));
+    return out;
 }
 
 } // namespace draughts::ai

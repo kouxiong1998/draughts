@@ -1,13 +1,10 @@
 #pragma once
 /// @file OpeningBook.hpp
-/// @brief Small text-backed opening book. Each line in the source file is a
-///        space-separated sequence of FMJD notation moves (32-28, 28x19).
-///        The class replays each line from the standard start position and
-///        records every distinct next move for every position along the way.
-///
-/// At query time, the AI looks up the current position and, if a book line
-/// passes through it, picks randomly among the recorded moves. This gives
-/// variation across games without the AI having to search the opening.
+/// @brief Opening book that reads the merged .bin format produced by
+///        tools/bookmerge. Each position maps to up to 5 weighted moves.
+///        At query time the engine rolls a weighted die to pick one,
+///        which produces natural variation between games while keeping
+///        every stored move at the search depth used during generation.
 
 #include "core/Board.hpp"
 #include "core/RuleSet.hpp"
@@ -26,20 +23,21 @@ class OpeningBook {
 public:
     OpeningBook() = default;
 
-    /// Load lines from a text file. Returns true if the file was opened.
-    /// Lines that fail to parse (illegal moves, malformed tokens) are
-    /// silently skipped.
+    /// Load a merged .bin book (produced by tools/bookmerge). Returns true
+    /// if the file was opened and parsed successfully. Missing file is not
+    /// an error - the book just stays empty and the engine falls back to
+    /// search on every move.
     bool loadFromFile(const std::string& path);
 
-    /// Load from an in-memory string (used by tests).
-    void loadFromString(const std::string& text);
+    /// Legacy loader for the old text format (kept for tests).
+    bool loadFromTextFile(const std::string& path);
 
-    [[nodiscard]] std::size_t lineCount()     const noexcept { return lineCount_; }
-    [[nodiscard]] std::size_t positionCount() const noexcept { return table_.size(); }
-    [[nodiscard]] bool        empty()         const noexcept { return table_.empty(); }
+    [[nodiscard]] bool        empty()         const noexcept { return positions_.empty(); }
+    [[nodiscard]] std::size_t positionCount() const noexcept { return positions_.size(); }
+    [[nodiscard]] std::size_t moveCount()     const noexcept { return totalMoves_; }
 
-    /// Pick a random move for `board`, or nullopt if the position is not
-    /// in the book. `rng` provides variety across games.
+    /// Pick a move for the given position, or nullopt if not in the book.
+    /// Uses weighted random selection among the stored top-5 moves.
     [[nodiscard]] std::optional<core::Move> pickMove(
         const core::Board& board,
         core::Color        side,
@@ -47,28 +45,21 @@ public:
         std::mt19937_64&   rng) const;
 
 private:
-    struct Key {
-        std::uint64_t hash{0};
-        core::Color   side{core::Color::Red};
-        core::RuleSet rules{core::RuleSet::InternationalMaxCapture};
-
-        bool operator==(const Key& o) const noexcept {
-            return hash == o.hash && side == o.side && rules == o.rules;
-        }
+    struct MoveEntry {
+        core::Move   move;
+        std::uint32_t weight;   // 0-1000 scale
     };
-    struct KeyHash {
-        std::size_t operator()(const Key& k) const noexcept {
-            return static_cast<std::size_t>(
-                k.hash
-                ^ (static_cast<std::uint64_t>(k.side)  << 62)
-                ^ (static_cast<std::uint64_t>(k.rules) << 60));
-        }
+    struct PositionEntry {
+        MoveEntry moves[5];
+        std::uint8_t count{0};
     };
 
-    std::unordered_map<Key, std::vector<core::Move>, KeyHash> table_;
-    std::size_t lineCount_{0};
+    std::unordered_map<std::uint64_t, PositionEntry> positions_;
+    std::size_t totalMoves_{0};
 
-    void parseAndInsert(const std::string& line);
+    [[nodiscard]] static std::uint64_t hashOf(const core::Board& board,
+                                              core::Color        side,
+                                              core::RuleSet      rules) noexcept;
 };
 
 } // namespace draughts::ai

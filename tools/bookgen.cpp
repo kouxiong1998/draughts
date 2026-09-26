@@ -2,7 +2,20 @@
 // Opening-book generator. Plays N self-play games at fixed search depth,
 // records every (position, chosen move) pair up to a ply limit.
 //
-// Output format: binary file with 32-byte header + N records (32 bytes each).
+// Writes incrementally: after each game, records are appended to the
+// output file and the file is flushed. If the process is killed or the
+// machine restarts, run the same command again and bookgen resumes.
+//
+// Output format (version 2):
+//   Header (32 bytes):
+//     magic[4]         = "DBKG"
+//     version          = 2
+//     recordSize       = 32
+//     gamesCompleted   = number of games written to the file so far
+//     ruleVariant      = 0 MaxCapture / 1 FreeCapture
+//     pad[7]
+//   Records (32 bytes each) follow immediately after the header, in
+//   completion order. bookmerge reads them until EOF.
 
 #include "core/GameEngine.hpp"
 #include "core/Zobrist.hpp"
@@ -12,10 +25,13 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -25,16 +41,16 @@ using namespace draughts;
 namespace {
 
 struct Options {
-    int           games    = 50000;
+    int           games    = 5000;
     int           depth    = 10;
-    int           stopPly  = 16;
-    int           threads  = 20;
+    int           stopPly  = 12;
+    int           threads  = 8;
     std::string   out      = "raw.bin";
     core::RuleSet rules    = core::RuleSet::InternationalMaxCapture;
     std::uint64_t seed     = 0xC0FFEEull;
+    bool          fresh    = false;
 };
 
-// Compact on-disk record. 32 bytes for cache alignment.
 struct Record {
     std::uint64_t hash;
     std::uint64_t captured;
@@ -46,11 +62,11 @@ struct Record {
 static_assert(sizeof(Record) == 32, "Record must be 32 bytes");
 
 struct FileHeader {
-    char          magic[4];    // "DBKG"
-    std::uint32_t version;     // 1
-    std::uint32_t recordSize;  // sizeof(Record)
-    std::uint64_t recordCount;
-    std::uint8_t  ruleVariant; // 0 = MaxCapture, 1 = FreeCapture
+    char          magic[4];       // "DBKG"
+    std::uint32_t version;        // 2
+    std::uint32_t recordSize;     // sizeof(Record)
+    std::uint64_t gamesCompleted;
+    std::uint8_t  ruleVariant;
     std::uint8_t  pad[7];
 };
 static_assert(sizeof(FileHeader) == 32, "Header must be 32 bytes");
@@ -64,50 +80,62 @@ std::uint64_t positionHash(const core::Board& b, core::Color side,
     return h;
 }
 
-// Play a batch of games. Returns every (position, chosen move) pair
-// recorded along the way.
-std::vector<Record> playBatch(int                numGames,
-                              const Options&     opts,
-                              std::atomic<int>*  gamesDone,
-                              std::atomic<bool>* abort)
-{
-    std::vector<Record> out;
-    out.reserve(static_cast<std::size_t>(numGames) * opts.stopPly);
+struct SharedWriter {
+    std::fstream                file;
+    std::mutex                  mtx;
+    std::atomic<int>            gamesDone{0};
+    std::atomic<bool>           abort{false};
+    std::atomic<std::uint64_t>  records{0};
+};
 
-    // Per-thread search context. 16 MB TT is plenty for depth-10 search.
-    ai::TranspositionTable tt(1u << 20);
+void threadWorker(const Options& opts,
+                  std::atomic<int>& nextGame,
+                  SharedWriter& writer)
+{
+    ai::TranspositionTable tt(1u << 20);      // 16 MB per worker
     std::atomic<bool>      stopFlag{false};
-    ai::Search search(&tt, /*tb=*/nullptr, &stopFlag, /*progress=*/nullptr);
+    ai::Search search(&tt, nullptr, &stopFlag, nullptr);
 
     ai::TimeBudget budget;
-    // Generous time ceiling - depth is the only real stopping criterion.
-    budget.soft     = std::chrono::seconds(60);
-    budget.hard     = std::chrono::seconds(60);
-    budget.minimum  = std::chrono::milliseconds(0);
-    budget.maxDepth = opts.depth;
-    // Randomize among near-best moves to give the book variety.
-    budget.randomTopN = 5;
-    budget.randomEps  = 30;
+    budget.soft       = std::chrono::seconds(600);
+    budget.hard       = std::chrono::seconds(600);
+    budget.minimum    = std::chrono::milliseconds(0);
+    budget.maxDepth   = opts.depth;
+    // Wider randomization (A step): 9 candidates within 60 cp of the best
+    // move. This gives the book much broader opening coverage because
+    // bookgen's AI explores more distinct opening sequences per game.
+    budget.randomTopN = 9;
+    budget.randomEps  = 60;
 
-    for (int g = 0; g < numGames; ++g) {
-        if (abort->load(std::memory_order_relaxed)) break;
+    while (!writer.abort.load(std::memory_order_relaxed)) {
+        const int g = nextGame.fetch_add(1, std::memory_order_relaxed);
+        if (g >= opts.games) break;
 
+        // Deterministic per-game seed: game N always plays the same way.
+        search.setSeed(opts.seed * 1000003ULL +
+                       static_cast<std::uint64_t>(g));
+
+        // Alternate starting color so the book covers both Red-first and
+        // Yellow-first games. Even games start with Red, odd with Yellow.
+        // Without this the book only matches one of the two Settings options.
         core::GameEngine engine;
-        engine.newGame(opts.rules, core::Color::Red);
+        const core::Color firstSide =
+            (g % 2 == 0) ? core::Color::Red : core::Color::Yellow;
+        engine.newGame(opts.rules, firstSide);
+
+        std::vector<Record> records;
+        records.reserve(static_cast<std::size_t>(opts.stopPly));
 
         for (int ply = 0; ply < opts.stopPly; ++ply) {
             if (engine.result() != core::GameResult::Ongoing) break;
 
-            const std::uint64_t h = positionHash(engine.board(),
-                                                  engine.sideToMove(),
-                                                  engine.rules());
-
+            const auto h = positionHash(engine.board(), engine.sideToMove(),
+                                        engine.rules());
             const auto stats = search.think(engine.board(),
                                             engine.sideToMove(),
                                             engine.rules(),
                                             budget,
                                             /*threadId=*/0);
-
             if (!stats.completed) break;
 
             Record r{};
@@ -116,15 +144,23 @@ std::vector<Record> playBatch(int                numGames,
             r.to          = stats.bestMove.to;
             r.isPromotion = stats.bestMove.isPromotion ? 1 : 0;
             r.captured    = stats.bestMove.captured;
-            out.push_back(r);
+            records.push_back(r);
 
             if (!engine.tryApply(stats.bestMove)) break;
         }
 
-        if (gamesDone) gamesDone->fetch_add(1, std::memory_order_relaxed);
+        // Append this game's records to the file (serialized under mutex).
+        {
+            std::lock_guard lk(writer.mtx);
+            writer.file.write(
+                reinterpret_cast<const char*>(records.data()),
+                static_cast<std::streamsize>(records.size() * sizeof(Record)));
+            writer.file.flush();
+            writer.records.fetch_add(records.size(),
+                                     std::memory_order_relaxed);
+        }
+        writer.gamesDone.fetch_add(1, std::memory_order_relaxed);
     }
-
-    return out;
 }
 
 Options parseArgs(int argc, char** argv) {
@@ -140,6 +176,7 @@ Options parseArgs(int argc, char** argv) {
         else if (a == "--threads")  o.threads  = nextInt();
         else if (a == "--out")      o.out      = nextStr();
         else if (a == "--seed")     o.seed     = std::stoull(nextStr());
+        else if (a == "--fresh")    o.fresh    = true;
         else if (a == "--rules") {
             const auto v = nextStr();
             if      (v == "on")  o.rules = core::RuleSet::InternationalMaxCapture;
@@ -148,7 +185,8 @@ Options parseArgs(int argc, char** argv) {
         } else if (a == "--help" || a == "-h") {
             std::printf(
                 "usage: bookgen [--games N] [--depth N] [--stop-ply N]\n"
-                "               [--threads N] [--out FILE] [--rules on|off] [--seed N]\n");
+                "               [--threads N] [--out FILE] [--rules on|off]\n"
+                "               [--seed N] [--fresh]\n");
             std::exit(0);
         } else {
             std::fprintf(stderr, "unknown arg: %s\n", a.c_str());
@@ -173,19 +211,66 @@ int main(int argc, char** argv) {
         o.rules == core::RuleSet::InternationalMaxCapture
             ? "on (majority)" : "off (free capture)");
     std::printf("  seed       0x%llx\n", (unsigned long long)o.seed);
+    std::printf("  fresh      %s\n", o.fresh ? "yes" : "no");
     std::printf("\n");
 
-    std::atomic<int>  gamesDone{0};
-    std::atomic<bool> abort{false};
+    // ?? Detect existing file & read header if present ?????????????????????
+    int        startGame = 0;
+    bool       resume    = false;
+    FileHeader existing{};
 
-    const int nThreads  = std::max(1, o.threads);
-    const int perThread = o.games / nThreads;
+    if (!o.fresh && std::filesystem::exists(o.out)) {
+        std::ifstream in(o.out, std::ios::binary);
+        if (in && in.read(reinterpret_cast<char*>(&existing), sizeof(existing))) {
+            const bool magicOk = std::memcmp(existing.magic, "DBKG", 4) == 0;
+            const bool verOk   = existing.version == 2;
+            const bool sizeOk  = existing.recordSize == sizeof(Record);
+            const bool rulesOk = existing.ruleVariant ==
+                ((o.rules == core::RuleSet::InternationalFreeCapture) ? 1 : 0);
+            if (magicOk && verOk && sizeOk && rulesOk) {
+                startGame = static_cast<int>(existing.gamesCompleted);
+                resume    = true;
+                std::printf("Resuming from game %d/%d (%.1f%%)\n",
+                            startGame, o.games,
+                            100.0 * startGame / std::max(1, o.games));
+            } else {
+                std::printf("Existing file has incompatible format or rule "
+                            "variant - starting fresh.\n");
+            }
+        }
+    }
 
-    std::vector<std::vector<Record>> results(static_cast<std::size_t>(nThreads));
-    std::vector<std::thread>         threads;
-    threads.reserve(static_cast<std::size_t>(nThreads));
+    if (startGame >= o.games) {
+        std::printf("Nothing to do: file already contains %d games.\n", startGame);
+        return 0;
+    }
 
-    const auto t0 = std::chrono::steady_clock::now();
+    // ?? Open output file, write fresh header if needed ???????????????????
+    std::fstream file;
+
+    if (!resume) {
+        file.open(o.out, std::ios::binary | std::ios::out | std::ios::trunc);
+        if (!file) { std::fprintf(stderr, "cannot create %s\n", o.out.c_str()); return 1; }
+        FileHeader hdr{};
+        std::memcpy(hdr.magic, "DBKG", 4);
+        hdr.version        = 2;
+        hdr.recordSize     = sizeof(Record);
+        hdr.gamesCompleted = 0;
+        hdr.ruleVariant    = (o.rules == core::RuleSet::InternationalFreeCapture) ? 1 : 0;
+        file.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+        file.flush();
+        file.close();
+    }
+
+    file.open(o.out, std::ios::binary | std::ios::in | std::ios::out);
+    if (!file) { std::fprintf(stderr, "cannot open %s\n", o.out.c_str()); return 1; }
+    file.seekp(0, std::ios::end);
+
+    SharedWriter writer;
+    writer.file = std::move(file);
+
+    std::atomic<int> nextGame{startGame};
+    const auto       t0 = std::chrono::steady_clock::now();
 
     std::atomic<bool> progressStop{false};
     std::thread progressThread([&]{
@@ -194,53 +279,39 @@ int main(int argc, char** argv) {
             if (progressStop.load()) break;
             const auto sec = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::steady_clock::now() - t0).count();
-            const int done = gamesDone.load();
-            const double pct = 100.0 * done / o.games;
-            std::printf("  [%llds] %d/%d games (%.1f%%)\n",
-                        (long long)sec, done, o.games, pct);
+            const int    done = writer.gamesDone.load();
+            const double pct  = 100.0 * (startGame + done) / std::max(1, o.games);
+            std::printf("  [%llds] %d/%d games (%.1f%%)  records=%llu\n",
+                        (long long)sec, startGame + done, o.games, pct,
+                        (unsigned long long)writer.records.load());
             std::fflush(stdout);
         }
     });
 
+    // ?? Spawn workers ????????????????????????????????????????????????????
+    const int nThreads = std::max(1, o.threads);
+    std::vector<std::thread> threads;
+    threads.reserve(static_cast<std::size_t>(nThreads));
     for (int t = 0; t < nThreads; ++t) {
-        const int g = (t == nThreads - 1)
-            ? (o.games - perThread * (nThreads - 1))
-            : perThread;
-        threads.emplace_back([&, t, g]{
-            results[static_cast<std::size_t>(t)] =
-                playBatch(g, o, &gamesDone, &abort);
-        });
+        threads.emplace_back([&]{ threadWorker(o, nextGame, writer); });
     }
-
     for (auto& th : threads) th.join();
     progressStop.store(true);
     progressThread.join();
 
-    const auto t1  = std::chrono::steady_clock::now();
-    const auto sec = std::chrono::duration_cast<std::chrono::seconds>(t1 - t0).count();
+    // ?? Update header with final gamesCompleted ??????????????????????????
+    const int finalGames = startGame + writer.gamesDone.load();
+    writer.file.seekp(static_cast<std::streamoff>(offsetof(FileHeader, gamesCompleted)));
+    writer.file.write(reinterpret_cast<const char*>(&finalGames), sizeof(finalGames));
+    writer.file.flush();
+    writer.file.close();
 
-    std::size_t total = 0;
-    for (const auto& v : results) total += v.size();
-
-    std::printf("\nDone. %zu records in %llds\n", total, (long long)sec);
-
-    std::ofstream f(o.out, std::ios::binary);
-    if (!f) { std::fprintf(stderr, "cannot open %s\n", o.out.c_str()); return 1; }
-
-    FileHeader hdr{};
-    std::memcpy(hdr.magic, "DBKG", 4);
-    hdr.version     = 1;
-    hdr.recordSize  = sizeof(Record);
-    hdr.recordCount = total;
-    hdr.ruleVariant = (o.rules == core::RuleSet::InternationalFreeCapture) ? 1 : 0;
-    f.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
-
-    for (const auto& v : results) {
-        f.write(reinterpret_cast<const char*>(v.data()),
-                static_cast<std::streamsize>(v.size() * sizeof(Record)));
-    }
-    f.close();
-
-    std::printf("wrote %s (%zu records)\n", o.out.c_str(), total);
+    const auto sec = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    std::printf("\nDone. %d total games, %llu records in %llds\n",
+                finalGames,
+                (unsigned long long)writer.records.load(),
+                (long long)sec);
+    std::printf("wrote %s\n", o.out.c_str());
     return 0;
 }

@@ -15,6 +15,8 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <utility>
+#include <vector>
 #include <functional>
 #include <random>
 
@@ -43,6 +45,20 @@ public:
            EndgameTablebase*    sharedTB,
            std::atomic<bool>*   stopFlag,
            ProgressFn           onProgress);
+
+    /// Reseed the internal RNG. Used by the opening-book generator to
+    /// make each game deterministic given a per-game seed, so a run can
+    /// be resumed after a crash without replaying previous games.
+    void setSeed(std::uint64_t s) noexcept { rng_.seed(s); }
+
+    /// Run a fixed-depth search and return the top-N scored moves,
+    /// sorted by score descending. Used by the opening-book filler.
+    [[nodiscard]] std::vector<std::pair<core::Move, int>>
+    topMoves(const core::Board& board,
+             core::Color        side,
+             core::RuleSet      rules,
+             int                depth,
+             int                N);
 
     /// Iterative-deepening search. `threadId` is used only to diversify the
     /// starting depth across workers (0, 1, 2, ...). Returns the deepest

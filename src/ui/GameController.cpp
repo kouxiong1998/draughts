@@ -5,6 +5,8 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
+#include <QTextStream>
 #include <QFileInfo>
 #include <QMetaObject>
 
@@ -76,9 +78,40 @@ GameController::~GameController() {
 }
 
 void GameController::loadOpeningBook() {
-    const QString path = findBookFile();
-    if (path.isEmpty()) return;
-    (void)book_.loadFromFile(path.toStdString());
+    const auto rules = engine_.rules();
+    const char* filename = (rules == core::RuleSet::InternationalFreeCapture)
+        ? "data/book_maxcap_off.bin"
+        : "data/book_maxcap_on.bin";
+
+    QDir d(QCoreApplication::applicationDirPath());
+    QString found;
+    for (int i = 0; i < 6; ++i) {
+        const QString candidate = d.absoluteFilePath(filename);
+        if (QFileInfo::exists(candidate)) { found = candidate; break; }
+        if (!d.cdUp()) break;
+    }
+
+    // Diagnostic log so we can see exactly what happened.
+    QFile log(QCoreApplication::applicationDirPath() + "/book_debug.log");
+    if (log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        QTextStream ts(&log);
+        ts << "[loadOpeningBook] rules="
+           << (rules == core::RuleSet::InternationalFreeCapture ? "off" : "on")
+           << " searchedFor=" << filename
+           << " found=" << (found.isEmpty() ? QString("(none)") : found)
+           << "\n";
+    }
+
+    if (found.isEmpty()) return;
+    const bool ok = book_.loadFromFile(found.toStdString());
+
+    if (log.isOpen()) {
+        QTextStream ts(&log);
+        ts << "  loaded=" << (ok ? "yes" : "no")
+           << " positions=" << book_.positionCount()
+           << " moves=" << book_.moveCount()
+           << "\n";
+    }
 }
 
 void GameController::clearSelection() {
@@ -312,6 +345,10 @@ void GameController::newGame() {
     humanColor_ = Settings::instance().playerColor();
     const auto& st = Settings::instance();
     engine_.newGame(st.nextRuleSet(), st.nextFirstPlayer());
+
+    // Reload the book for the (possibly) new rule set.
+    loadOpeningBook();
+    ai_.setOpeningBook(book_.empty() ? nullptr : &book_);
     clearSelection();
     resetClocks();
     startClockFor(engine_.sideToMove());
@@ -448,25 +485,32 @@ void GameController::launchAISearch() {
                                                 engine_.rules());
     if (moves.empty()) return;
 
-    // ?? Forced-move fast path ?????????????????????????????????????????????
-    // If the position has exactly one legal move AND it is a capture chain,
-    // the move is forced - there is nothing to search. Play it instantly:
-    // no threads spawned, no callbacks fired, no delay.
-    //
-    // Draughts makes captures mandatory when available, so "one legal move
-    // that is a capture" means exactly one capture chain is possible.
     if (moves.size() == 1 && moves[0].isCapture()) {
         emit forcedMovePlayed();
         playMoveFromAI(moves[0]);
         return;
     }
 
+    // ?? Book lookup with diagnostic log ???????????????????????????????????
+    bool bookHit = false;
     if (!book_.empty()) {
         std::mt19937_64 rng(std::random_device{}());
         const auto bookMove = book_.pickMove(engine_.board(),
                                              engine_.sideToMove(),
                                              engine_.rules(),
                                              rng);
+        bookHit = bookMove.has_value();
+
+        QFile log(QCoreApplication::applicationDirPath() + "/book_debug.log");
+        if (log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+            QTextStream ts(&log);
+            ts << "[launchAISearch] ply=" << engine_.ply()
+               << " side=" << (engine_.sideToMove() == core::Color::Red ? "R" : "Y")
+               << " legalMoves=" << moves.size()
+               << " bookHit=" << (bookHit ? "YES" : "no")
+               << "\n";
+        }
+
         if (bookMove) {
             emit openingBookPlayed();
             playMoveFromAI(*bookMove);
@@ -477,10 +521,6 @@ void GameController::launchAISearch() {
     aiThinking_ = true;
     emit aiThinkingChanged(true);
 
-    // Build the time budget from the user's think-time setting.
-    //   soft    = 80%  of total  (start next ID iteration only if elapsed < soft)
-    //   hard    = 110% of total  (absolute ceiling, abort immediately)
-    //   minimum = min(300 ms, total/10)
     const int totalMs = Settings::instance().thinkTimeMs();
     ai::TimeBudget tb;
     tb.soft    = std::chrono::milliseconds(totalMs * 8 / 10);

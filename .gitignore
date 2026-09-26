@@ -43,3 +43,7 @@ Testing/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Opening-book build intermediates
+data/*.raw
+
