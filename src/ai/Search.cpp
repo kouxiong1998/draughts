@@ -120,7 +120,7 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
     // Only consulted when we actually have a TB (main thread) and the
     // position is small enough. The TB is exact, so its answer is preferred
     // over both the TT and the heuristic evaluation.
-    if (tb_ && std::popcount(board.occupied()) <= EndgameTablebase::kMaxPieces) {
+    if (false && tb_ && std::popcount(board.occupied()) <= EndgameTablebase::kMaxPieces) {
         if (const auto r = tb_->probe(board, side, rules)) {
             switch (r->result) {
                 case TBResult::Win:
