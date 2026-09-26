@@ -10,6 +10,13 @@ namespace {
 int materialAndPosition(const core::Board& b) noexcept {
     const auto& w = pst::active();
 
+    // King value scales with board density: a flying king dominates a
+    // sparse board but can be blocked in a crowded one. At the opening
+    // (40 pieces) we keep the classic 3-men value; as pieces come off,
+    // the king becomes relatively more valuable.
+    const int total     = std::popcount(b.occupied());
+    const int kingValue = std::max(250, kKingValue + (40 - total) * 5);
+
     int score = 0;
 
     const core::Bitboard redMen    = b.menMask(core::Color::Red);
@@ -26,7 +33,7 @@ int materialAndPosition(const core::Board& b) noexcept {
     };
 
     scan(redMen,   [&](core::Square sq){ score +=  kManValue  + w.men[sq];   });
-    scan(redKings, [&](core::Square sq){ score +=  kKingValue + w.kings[sq]; });
+    scan(redKings, [&](core::Square sq){ score +=  kingValue + w.kings[sq]; });
 
     scan(yellMen, [&](core::Square sq){
         const auto m = core::bc::mirrorSquare(sq);
@@ -34,7 +41,7 @@ int materialAndPosition(const core::Board& b) noexcept {
     });
     scan(yellKings, [&](core::Square sq){
         const auto m = core::bc::mirrorSquare(sq);
-        score -= kKingValue + w.kings[m];
+        score -= kingValue + w.kings[m];
     });
 
     return score;
