@@ -1,6 +1,7 @@
 #include "GameEngine.hpp"
 #include "MoveGenerator.hpp"
 #include "Zobrist.hpp"
+#include <bit>
 #include <cassert>
 
 namespace draughts::core {
@@ -31,9 +32,9 @@ namespace draughts::core {
         return h;
     }
 
-    void GameEngine::applyMoveToBoard(const Move& m, bool wasAlreadyKing) noexcept {
+    void GameEngine::applyMoveToBoard(const Move& m, bool wasPromoted) noexcept {
         const Piece p = board_.at(m.from);
-        assert(!p.empty());
+        if (p.empty()) return;   // defensive
 
         Bitboard cap = m.captured;
         while (cap) {
@@ -43,32 +44,23 @@ namespace draughts::core {
         }
 
         board_.removePiece(m.from);
-        board_.setPiece(m.to, p.color, p.kind);
-
-        // Promotion derived geometrically. Never trust the Move's
-        // isPromotion bit through undo/redo - it may have been rebuilt
-        // by the UI without that flag.
-        if (!wasAlreadyKing
-            && p.kind == PieceKind::Man
-            && bc::rowOf(m.to) == bc::promotionRow(p.color)) {
-            board_.promote(m.to);
+        if (wasPromoted) {
+            board_.setPiece(m.to, p.color, PieceKind::King);
+        } else {
+            board_.setPiece(m.to, p.color, p.kind);
         }
     }
 
-    void GameEngine::undoMoveFromBoard(const Move& m, bool wasAlreadyKing) noexcept {
+    void GameEngine::undoMoveFromBoard(const Move& m, bool wasPromoted) noexcept {
         const Piece moved = board_.at(m.to);
-        Color c = moved.color;
-        PieceKind k = moved.kind;
-
-        // If the piece was a Man before this move but is a King now, it
-        // was promoted by this move.
-        const bool wasPromoted = !wasAlreadyKing && (k == PieceKind::King);
+        if (moved.empty()) return;   // defensive
+        const Color c = moved.color;
 
         board_.removePiece(m.to);
         if (wasPromoted) {
             board_.setPiece(m.from, c, PieceKind::Man);
         } else {
-            board_.setPiece(m.from, c, k);
+            board_.setPiece(m.from, c, moved.kind);
         }
 
         const Color opp = opposite(c);
@@ -107,13 +99,16 @@ namespace draughts::core {
         if (cursor_ < history_.size()) history_.resize(cursor_);
 
         const bool movedKing = p.kind == PieceKind::King;
+        const bool wasPromoted = (!movedKing)
+            && (p.kind == PieceKind::Man)
+            && (bc::rowOf(matched.to) == bc::promotionRow(p.color));
         const bool wasCap = matched.isCapture();
 
-        applyMoveToBoard(matched, movedKing);
+        applyMoveToBoard(matched, wasPromoted);
         state_.applyMoveBookkeeping(mover, movedKing, wasCap);
         state_.notePosition(positionHash());
 
-        history_.push_back(MoveRecord{ matched, mover, movedKing, wasCap, positionHash() });
+        history_.push_back(MoveRecord{ matched, mover, movedKing, wasCap, wasPromoted, positionHash() });
         ++cursor_;
 
         updateSmallEndgameCounters(mover, movedKing, wasCap);
@@ -124,11 +119,11 @@ namespace draughts::core {
     bool GameEngine::undo() noexcept {
         if (!canUndo()) return false;
         const MoveRecord& rec = history_[cursor_ - 1];
-        undoMoveFromBoard(rec.move, rec.movedKing);
+        undoMoveFromBoard(rec.move, rec.wasPromoted);
         --cursor_;
 
         // Rebuild state cleanly from scratch (cheap ??? game is short).
-        state_.reset(history_.empty() ? Color::Red : opposite(history_[0].mover),
+        state_.reset(history_.empty() ? Color::Red : history_[0].mover,
             state_.rules());
         // Replay bookkeeping only (do not re-apply moves to board).
         for (std::size_t i = 0; i < cursor_; ++i) {
@@ -145,7 +140,7 @@ namespace draughts::core {
     bool GameEngine::redo() noexcept {
         if (!canRedo()) return false;
         const MoveRecord& rec = history_[cursor_];
-        applyMoveToBoard(rec.move, rec.movedKing);
+        applyMoveToBoard(rec.move, rec.wasPromoted);
         state_.applyMoveBookkeeping(rec.mover, rec.movedKing, rec.wasCapture);
         state_.notePosition(rec.positionHashAfter);
         ++cursor_;
@@ -170,7 +165,16 @@ namespace draughts::core {
         const int yM = board_.count(Color::Yellow, PieceKind::Man);
         const bool kingsOnly = (rM == 0 && yM == 0);
 
-        if (!kingsOnly) { kings3v1Plies_ = kings2v1Plies_ = 0; return; }
+        // 4-piece rule: when exactly 4 pieces are on the board, count plies.
+    // 40 plies (= 20 moves by both sides) with no capture ? draw.
+    const int totalPieces = rK + yK + rM + yM;
+    if (wasCapture || totalPieces != 4) {
+        fourPiecePlies_ = 0;
+    } else {
+        ++fourPiecePlies_;
+    }
+
+    if (!kingsOnly) { kings3v1Plies_ = kings2v1Plies_ = 0; return; }
 
         if (rK + yK == 4 && (rK == 3 || yK == 3)) { ++kings3v1Plies_; kings2v1Plies_ = 0; }
         else if (rK + yK == 3 && (rK == 2 || yK == 2)) { ++kings2v1Plies_; kings3v1Plies_ = 0; }
@@ -200,6 +204,10 @@ namespace draughts::core {
         // king-only plies with no capture.
         if (kings3v1Plies_ >= 32) { result_ = GameResult::Draw; return; }
         if (kings2v1Plies_ >= 10) { result_ = GameResult::Draw; return; }
+
+        // 4-piece rule: 20 moves (40 plies) with no capture at exactly
+        // 4 pieces on the board ? draw.
+        if (fourPiecePlies_ >= 40) { result_ = GameResult::Draw; return; }
     }
 
 } // namespace draughts::core

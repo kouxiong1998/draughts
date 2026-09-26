@@ -22,6 +22,7 @@ namespace draughts::core {
         Color  mover;
         bool   movedKing;
         bool   wasCapture;
+        bool   wasPromoted;  ///< piece became a King AS A RESULT of this move
         std::uint64_t positionHashAfter;
     };
 
@@ -81,6 +82,7 @@ namespace draughts::core {
         // FMJD small-endgame counters (kings-only 3v1, 2v1).
         int kings3v1Plies_{ 0 };
         int kings2v1Plies_{ 0 };
+    int fourPiecePlies_{0};   ///< plies at exactly 4 pieces on board
 
         void resetInternal();
         void updateResultAfterMove();
