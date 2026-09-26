@@ -76,7 +76,7 @@ int Search::quiescence(const core::Board& board, core::Color side, core::RuleSet
 {
     ++nodes_;
     if ((nodes_ & 1023u) == 0 && timeMgr_.shouldStop()) return 0;
-    if (ply >= kMaxPly - 1) return evaluate(board, side);
+    if (ply >= kMaxPly - 1) return evaluate(board, side, rules);
 
     const auto moves = core::generateLegalMoves(board, side, rules);
     if (moves.empty()) return -kMateScore + ply;
@@ -85,7 +85,7 @@ int Search::quiescence(const core::Board& board, core::Color side, core::RuleSet
     for (std::size_t i = 0; i < moves.size(); ++i)
         if (moves[i].isCapture()) { anyCapture = true; break; }
 
-    if (!anyCapture) return evaluate(board, side);
+    if (!anyCapture) return evaluate(board, side, rules);
 
     int best = -kMateScore - 1;
     for (std::size_t i = 0; i < moves.size(); ++i) {
@@ -109,7 +109,7 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
 {
     ++nodes_;
     if ((nodes_ & 1023u) == 0 && timeMgr_.shouldStop()) return 0;
-    if (ply >= kMaxPly - 1) return evaluate(board, side);
+    if (ply >= kMaxPly - 1) return evaluate(board, side, rules);
 
     const std::uint64_t hash = positionHash(board, side, rules);
     const int alphaOrig = alpha;

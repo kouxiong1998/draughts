@@ -432,7 +432,7 @@ void GameController::offerDraw() {
 
     // Human vs AI: the AI evaluates the position with the static evaluator.
     // Accept unless the AI is clearly ahead.
-    const int evalForMover = ai::evaluate(engine_.board(), engine_.sideToMove());
+    const int evalForMover = ai::evaluate(engine_.board(), engine_.sideToMove(), engine_.rules());
     const int evalForAI = (engine_.sideToMove() == aiColor())
                             ? evalForMover
                             : -evalForMover;
