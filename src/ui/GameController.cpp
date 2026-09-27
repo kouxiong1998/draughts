@@ -438,6 +438,21 @@ void GameController::launchAISearch() {
         return;
     }
 
+    // Hardcoded opening: when the AI is Red and it's the very
+    // first move of the game, play 35-30 (maps to Kingsrow's
+    // 20-25 in its coordinate system). Only fires at ply 0.
+    if (engine_.ply() == 0 && engine_.sideToMove() == core::Color::Red) {
+        const core::Square hardFrom = core::bc::fromDisplayLabel(35);
+        const core::Square hardTo   = core::bc::fromDisplayLabel(30);
+        for (std::size_t i = 0; i < moves.size(); ++i) {
+            if (moves[i].from == hardFrom && moves[i].to == hardTo
+                && !moves[i].isCapture()) {
+                playMoveFromAI(moves[i]);
+                return;
+            }
+        }
+    }
+
     aiThinking_ = true;
     emit aiThinkingChanged(true);
 
@@ -456,7 +471,7 @@ void GameController::launchAISearch() {
         const int myMat  = b.count(my,  core::PieceKind::Man)  + 3 * b.count(my,  core::PieceKind::King);
         const int oppMat = b.count(opp, core::PieceKind::Man)  + 3 * b.count(opp, core::PieceKind::King);
         const int diff = myMat - oppMat;
-        const int c = (diff > 0) ? +25 : (diff < 0 ? -25 : 0);
+        const int c = (diff > 0) ? +25 : (diff < 0 ? -25 : +15);
         ai_.setContempt(c);
     }
 
