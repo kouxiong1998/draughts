@@ -491,33 +491,6 @@ void GameController::launchAISearch() {
         return;
     }
 
-    // ?? Book lookup with diagnostic log ???????????????????????????????????
-    bool bookHit = false;
-    if (!book_.empty()) {
-        std::mt19937_64 rng(std::random_device{}());
-        const auto bookMove = book_.pickMove(engine_.board(),
-                                             engine_.sideToMove(),
-                                             engine_.rules(),
-                                             rng);
-        bookHit = bookMove.has_value();
-
-        QFile log(QCoreApplication::applicationDirPath() + "/book_debug.log");
-        if (log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-            QTextStream ts(&log);
-            ts << "[launchAISearch] ply=" << engine_.ply()
-               << " side=" << (engine_.sideToMove() == core::Color::Red ? "R" : "Y")
-               << " legalMoves=" << moves.size()
-               << " bookHit=" << (bookHit ? "YES" : "no")
-               << "\n";
-        }
-
-        if (bookMove) {
-            emit openingBookPlayed();
-            playMoveFromAI(*bookMove);
-            return;
-        }
-    }
-
     aiThinking_ = true;
     emit aiThinkingChanged(true);
 

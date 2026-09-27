@@ -167,6 +167,10 @@ draughts_apply_warnings(bookgen)
 add_executable(bookmerge tools/bookmerge.cpp)
 target_link_libraries(bookmerge PRIVATE draughts_ai)
 draughts_apply_warnings(bookmerge)
+# ---- Opening-book info tool --------------------------------------------------
+add_executable(book_info tools/book_info.cpp)
+target_link_libraries(book_info PRIVATE draughts_ai)
+draughts_apply_warnings(book_info)
 # ---- Opening-book filler -----------------------------------------------------
 add_executable(bookfill tools/bookfill.cpp)
 target_link_libraries(bookfill PRIVATE draughts_ai)
