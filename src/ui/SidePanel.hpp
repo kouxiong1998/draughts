@@ -33,7 +33,6 @@ private slots:
     void onAIThinkingChanged(bool thinking);
     void onAIProgress(int depth, quint64 nodes, int score, qint64 ms);
     void onPonderProgress(int depth, quint64 nodes, int score, qint64 ms);
-    void onOpeningBookPlayed();
     void onTimeChanged(quint64 redMs, quint64 yellowMs);
     void onReplayModeChanged(bool active);
     void onDrawOffered(bool accepted, const QString& reason);
@@ -47,7 +46,6 @@ private:
     QLabel* captureLabel_{nullptr};
     QLabel* timeLabel_{nullptr};       // NEW: move timer
     QLabel* resultLabel_{nullptr};
-    QLabel* bookLabel_{nullptr};       // opening book line (top)
     QLabel* aiStatusLabel_{nullptr};   // real search line
     QLabel* ponderLabel_{nullptr};     // ponder search line (bottom)
 

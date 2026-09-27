@@ -118,11 +118,6 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     // board visibly shift and snap back. A fixed width eliminates that entirely.
     constexpr int kStatusLabelWidth = 340;
 
-    bookLabel_ = new QLabel(this);
-    bookLabel_->setStyleSheet("color: #ffffff; font-size: 10px;");
-    bookLabel_->setWordWrap(false);
-    bookLabel_->setFixedWidth(kStatusLabelWidth);
-
     aiStatusLabel_ = new QLabel(this);
     aiStatusLabel_->setStyleSheet("color: #ffffff; font-size: 10px;");
     aiStatusLabel_->setWordWrap(false);
@@ -167,7 +162,6 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     layout->addWidget(captureLabel_);
     layout->addWidget(timeLabel_);
     layout->addWidget(resultLabel_);
-    layout->addWidget(bookLabel_);
     layout->addWidget(aiStatusLabel_);
     layout->addWidget(ponderLabel_);
     layout->addSpacing(6);
@@ -267,7 +261,6 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     });
 
     connect(newGameBtn_, &QPushButton::clicked, this, [this]{
-        bookLabel_->clear();
         aiStatusLabel_->clear();
         ponderLabel_->clear();
         if (controller_) controller_->newGame();
@@ -280,7 +273,6 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     connect(settingsBtn_, &QPushButton::clicked, this, [this]{
         SettingsDialog dlg(this);
         connect(&dlg, &SettingsDialog::restartRequested, this, [this]{
-            bookLabel_->clear();
             aiStatusLabel_->clear();
             ponderLabel_->clear();
             if (controller_) controller_->newGame();
@@ -360,8 +352,6 @@ void SidePanel::setController(GameController* c, BoardWidget* b) {
                 this, &SidePanel::onAIProgress);
         connect(controller_, &GameController::ponderProgress,
                 this, &SidePanel::onPonderProgress);
-        connect(controller_, &GameController::openingBookPlayed,
-                this, &SidePanel::onOpeningBookPlayed);
         connect(controller_, &GameController::forcedMovePlayed,
                 this, [this]{
                     aiStatusLabel_->setText(QStringLiteral("Forced move"));
@@ -449,10 +439,6 @@ void SidePanel::onPonderProgress(int depth, quint64 nodes, int score, qint64 ms)
             .arg(depth).arg(nodes / 1000).arg(score).arg(ms));
 }
 
-void SidePanel::onOpeningBookPlayed() {
-    bookLabel_->setText(QStringLiteral("Opening book"));
-}
-
 void SidePanel::onTimeChanged(quint64 redMs, quint64 yellowMs) {
     timeLabel_->setText(QString("Time:  Red %1  /  Yellow %2")
                         .arg(formatTime(redMs))
@@ -507,7 +493,6 @@ void SidePanel::onLoadGame() {
         return;
     }
 
-    bookLabel_->clear();
     aiStatusLabel_->clear();
     ponderLabel_->clear();
     controller_->adoptEngine(std::move(loaded));

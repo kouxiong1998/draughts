@@ -9,7 +9,6 @@
 #include "core/Types.hpp"
 #include "controller/ModeConfig.hpp"
 #include "ai/AIEngine.hpp"
-#include "ai/OpeningBook.hpp"
 
 #include <QObject>
 #include <QTimer>
@@ -111,7 +110,6 @@ signals:
     void moveApplied(const core::MoveRecord& rec, const core::Board& preBoard);
     void aiThinkingChanged(bool thinking);
     void aiProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
-    void openingBookPlayed();
     void forcedMovePlayed();
     void ponderProgress(int depth, quint64 nodes, int score, qint64 elapsedMs);
     void timeChanged(quint64 redMs, quint64 yellowMs);
@@ -129,7 +127,6 @@ private:
     core::Color          humanColor_{core::Color::Yellow};
     bool                 aiThinking_{false};
 
-    ai::OpeningBook book_;
     ai::AIEngine    ai_;
 
     // Replay
@@ -149,7 +146,6 @@ private:
     void clearSelection();
     void recomputeHighlights();
     [[nodiscard]] std::vector<core::Square> landingsOf(const core::Move& m) const;
-    void loadOpeningBook();
     void maybeTriggerAI();
     void launchAISearch();
     void startPonder();

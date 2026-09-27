@@ -18,16 +18,6 @@ namespace draughts::ui {
 
 namespace {
 
-QString findBookFile() {
-    QDir d(QCoreApplication::applicationDirPath());
-    for (int i = 0; i < 6; ++i) {
-        const QString candidate = d.absoluteFilePath("data/opening_book.txt");
-        if (QFileInfo::exists(candidate)) return candidate;
-        if (!d.cdUp()) break;
-    }
-    return {};
-}
-
 constexpr auto kPonderSoft = std::chrono::milliseconds(600000);
 constexpr auto kPonderHard = std::chrono::milliseconds(660000);
 
@@ -37,9 +27,6 @@ constexpr int kClockTickMs = 200;
 
 GameController::GameController(QObject* parent) : QObject(parent) {
     humanColor_ = Settings::instance().playerColor();
-
-    loadOpeningBook();
-    ai_.setOpeningBook(book_.empty() ? nullptr : &book_);
 
     ai_.setProgressCallback([this](const ai::SearchStats& s) {
         QMetaObject::invokeMethod(this, [this, s]{
@@ -75,43 +62,6 @@ GameController::GameController(QObject* parent) : QObject(parent) {
 
 GameController::~GameController() {
     ai_.stop(std::chrono::milliseconds(1500));
-}
-
-void GameController::loadOpeningBook() {
-    const auto rules = engine_.rules();
-    const char* filename = (rules == core::RuleSet::InternationalFreeCapture)
-        ? "data/book_maxcap_off.bin"
-        : "data/book_maxcap_on.bin";
-
-    QDir d(QCoreApplication::applicationDirPath());
-    QString found;
-    for (int i = 0; i < 6; ++i) {
-        const QString candidate = d.absoluteFilePath(filename);
-        if (QFileInfo::exists(candidate)) { found = candidate; break; }
-        if (!d.cdUp()) break;
-    }
-
-    // Diagnostic log so we can see exactly what happened.
-    QFile log(QCoreApplication::applicationDirPath() + "/book_debug.log");
-    if (log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        QTextStream ts(&log);
-        ts << "[loadOpeningBook] rules="
-           << (rules == core::RuleSet::InternationalFreeCapture ? "off" : "on")
-           << " searchedFor=" << filename
-           << " found=" << (found.isEmpty() ? QString("(none)") : found)
-           << "\n";
-    }
-
-    if (found.isEmpty()) return;
-    const bool ok = book_.loadFromFile(found.toStdString());
-
-    if (log.isOpen()) {
-        QTextStream ts(&log);
-        ts << "  loaded=" << (ok ? "yes" : "no")
-           << " positions=" << book_.positionCount()
-           << " moves=" << book_.moveCount()
-           << "\n";
-    }
 }
 
 void GameController::clearSelection() {
@@ -346,9 +296,6 @@ void GameController::newGame() {
     const auto& st = Settings::instance();
     engine_.newGame(st.nextRuleSet(), st.nextFirstPlayer());
 
-    // Reload the book for the (possibly) new rule set.
-    loadOpeningBook();
-    ai_.setOpeningBook(book_.empty() ? nullptr : &book_);
     clearSelection();
     resetClocks();
     startClockFor(engine_.sideToMove());
