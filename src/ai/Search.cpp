@@ -251,8 +251,13 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
     // i == 0 is never pruned so at least one candidate is always searched.
     const bool mateWindow = std::abs(alpha) >= kMateScore - 1000 ||
                             std::abs(beta)  >= kMateScore - 1000;
-    const bool futilityOn = (depth <= 2) && !mateWindow;
-    const int  futilityMargin = 100 * depth;
+    // Extended futility: prune quiet moves when static eval + margin
+    // already trails alpha by a wide margin. Depth-dependent margin -
+    // deeper searches need a bigger safety gap because they see more
+    // tactics.
+    const int kFutilityMargin[5] = {0, 100, 200, 350, 500};
+    const bool futilityOn = (depth >= 1 && depth <= 4) && !mateWindow;
+    const int  futilityMargin = futilityOn ? kFutilityMargin[depth] : 0;
     const int  futilityEval  = futilityOn ? evaluate(board, side, rules) : 0;
     const std::size_t lmpLimit = (depth == 1) ? 4u : (depth == 2) ? 8u : 100000u;
 
