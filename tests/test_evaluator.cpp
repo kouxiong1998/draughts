@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "core/Board.hpp"
 #include "ai/Evaluator.hpp"
+#include <bit>
 
 using namespace draughts;
 
@@ -51,4 +52,34 @@ TEST_CASE("Evaluator: negamax convention - positive = good for mover") {
     // evaluating with Yellow as the mover is negative.
     REQUIRE(redPerspective    > 0);
     REQUIRE(yellowPerspective < 0);
+}
+
+
+TEST_CASE("Evaluator: 180-degree mirror negates eval exactly") {
+    // Symmetry check: rotate the board 180 degrees AND swap colors.
+    // Evaluation must flip sign exactly. Any PST or term asymmetry
+    // would break this and cause a Red/Yellow strength bias.
+    core::Board b;
+    b.resetStandard();
+    b.removePiece(11);
+    b.removePiece(38);
+    b.setPiece(22, core::Color::Red, core::PieceKind::King);
+
+    const int redEval = ai::evaluate(b, core::Color::Red,
+                                     core::RuleSet::InternationalMaxCapture);
+
+    core::Board m;
+    m.clear();
+    core::Bitboard bb = b.occupied();
+    while (bb) {
+        const auto sq = static_cast<core::Square>(std::countr_zero(bb));
+        bb &= bb - 1;
+        const auto p = b.at(sq);
+        m.setPiece(core::bc::mirrorSquare(sq), core::opposite(p.color), p.kind);
+    }
+
+    const int mirrorEval = ai::evaluate(m, core::Color::Yellow,
+                                        core::RuleSet::InternationalMaxCapture);
+
+    REQUIRE(redEval == mirrorEval);
 }
