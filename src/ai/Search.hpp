@@ -102,6 +102,7 @@ private:
     int         contempt_{0};
     std::array<std::uint64_t, kMaxPly> pathHashes_{};
     DrawContext rootDraw_{};
+    bool                     lastWasNull_{false};
 
     int  negamax(const core::Board& board, core::Color side, core::RuleSet rules,
                  int depth, int alpha, int beta, int ply, DrawContext dc);

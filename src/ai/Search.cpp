@@ -256,6 +256,32 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
     const int  futilityEval  = futilityOn ? evaluate(board, side, rules) : 0;
     const std::size_t lmpLimit = (depth == 1) ? 4u : (depth == 2) ? 8u : 100000u;
 
+    // Stage 6c - null-move pruning. Skip our turn and search; if even
+    // after a free move the opponent cannot beat beta, this branch is
+    // bad for us and can be pruned. Conservative guards:
+    //   - depth >= 3 (need enough remaining depth to be meaningful)
+    //   - pieces > 8 (zugzwang is real in sparse endings)
+    //   - not a mate window (never miss a forced mate)
+    //   - no null-move two plies in a row (avoid explosive double passes)
+    //
+    // In MaxCapture, if the opponent has any capture they are forced to
+    // take it - this naturally fires the pruning only when they have no
+    // strong reply, which is exactly what we want.
+    const int totalPieces = std::popcount(board.occupied());
+    if (depth >= 3 && !mateWindow && totalPieces > 8
+        && lastWasNull_ == false) {
+        constexpr int kNullR = 2;
+        const bool wasNull = lastWasNull_;
+        lastWasNull_ = true;
+        const int nullScore = -negamax(board, opp, rules,
+                                     depth - 1 - kNullR,
+                                     -beta, -beta + 1, ply + 1, dc);
+        lastWasNull_ = wasNull;
+        if (nullScore >= beta) {
+            return beta;
+        }
+    }
+
     // Principal Variation Search (PVS): the first move gets the full window.
     // Every subsequent move gets a null-window (alpha, alpha+1) probe first;
     // if the probe beats alpha, re-search with the full window. Provably
