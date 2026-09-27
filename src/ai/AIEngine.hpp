@@ -4,16 +4,11 @@
 ///        spawns N worker threads that all search the root position. The
 ///        deepest fully-completed result across all workers wins.
 ///
-/// An optional OpeningBook can be attached; if the current position is in
-/// the book, `think()` returns the book move immediately (via the done
-/// callback) without spawning any worker threads.
-///
 /// A "silent" think (`silent = true`) runs the same search but suppresses
 /// both progress and done callbacks. Used for pondering: the engine warms
 /// the transposition table in the background while it is the opponent's
 /// turn, then a real (non-silent) think benefits from the warmer TT.
 
-#include "OpeningBook.hpp"
 #include "Search.hpp"
 #include "TranspositionTable.hpp"
 #include "core/Board.hpp"
@@ -47,10 +42,6 @@ public:
 
     void setThreadCount(int n);
     [[nodiscard]] int threadCount() const noexcept { return threadCount_; }
-
-    /// Attach (or detach with nullptr) an opening book.
-    void setOpeningBook(const OpeningBook* book) noexcept { book_ = book; }
-    [[nodiscard]] const OpeningBook* openingBook() const noexcept { return book_; }
 
     /// Launch a search. Non-blocking; result via done callback.
     /// When `silent` is true, neither the progress nor the done callback
@@ -91,9 +82,6 @@ private:
     std::atomic<std::uint64_t> generation_{0};
     int                        threadCount_{4};
     int                        contempt_{0};
-
-    const OpeningBook*         book_{nullptr};
-    std::mt19937_64            bookRng_{std::random_device{}()};
 
     std::mutex cbMutex_;
     ProgressFn progressCb_;

@@ -68,36 +68,6 @@ void AIEngine::think(const core::Board& board,
 
     stopFlag_.store(false, std::memory_order_relaxed);
 
-    // Opening book fast path: only applies to non-silent (real) searches.
-    // A ponder search never uses the book because the book has nothing to
-    // add to TT warming, and we do not want to shortcut the AI's real move.
-    if (!silent && book_ && !book_->empty()) {
-        auto bookMove = book_->pickMove(board, side, rules, bookRng_);
-        if (bookMove) {
-            SearchStats s;
-            s.bestMove  = *bookMove;
-            s.depth     = 0;
-            s.score     = 0;
-            s.completed = true;
-
-            worker_ = std::jthread([this, s, myGen]() {
-                thinking_.store(true, std::memory_order_relaxed);
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                thinking_.store(false, std::memory_order_relaxed);
-
-                if (generation_.load(std::memory_order_relaxed) != myGen) return;
-
-                DoneFn cb;
-                {
-                    std::lock_guard lk(cbMutex_);
-                    cb = doneCb_;
-                }
-                if (cb) cb(s.bestMove, s);
-            });
-            return;
-        }
-    }
-
     worker_ = std::jthread(
         [this, board, side, rules, budget, myGen, silent, dc]() {
             runSMP(board, side, rules, budget, myGen, silent, dc);
