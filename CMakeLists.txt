@@ -57,7 +57,6 @@ draughts_apply_warnings(draughts_core)
 add_library(draughts_ai STATIC
     src/ai/Evaluator.cpp
     src/ai/PST.cpp
-    src/ai/OpeningBook.cpp
     src/ai/TranspositionTable.cpp
     src/ai/MoveOrdering.cpp
     src/ai/TimeManager.cpp
@@ -159,19 +158,3 @@ if(DRAUGHTS_BUILD_UI)
     draughts_apply_warnings(ai_ui_sim)
 endif()
 
-# ---- Opening-book generator --------------------------------------------------
-add_executable(bookgen tools/bookgen.cpp)
-target_link_libraries(bookgen PRIVATE draughts_ai)
-draughts_apply_warnings(bookgen)
-# ---- Opening-book merger -----------------------------------------------------
-add_executable(bookmerge tools/bookmerge.cpp)
-target_link_libraries(bookmerge PRIVATE draughts_ai)
-draughts_apply_warnings(bookmerge)
-# ---- Opening-book info tool --------------------------------------------------
-add_executable(book_info tools/book_info.cpp)
-target_link_libraries(book_info PRIVATE draughts_ai)
-draughts_apply_warnings(book_info)
-# ---- Opening-book filler -----------------------------------------------------
-add_executable(bookfill tools/bookfill.cpp)
-target_link_libraries(bookfill PRIVATE draughts_ai)
-draughts_apply_warnings(bookfill)
