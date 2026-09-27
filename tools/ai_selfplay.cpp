@@ -25,6 +25,7 @@ struct Opts {
     int           maxPlies     = 200;
     int           timeMs       = 500;
     int           openingPlies = 2;
+    int           threads      = 4;
     std::uint64_t seed         = 12345;
     bool          maxCapture   = true;
     bool          quiet        = false;
@@ -33,7 +34,7 @@ struct Opts {
 void usage(const char* argv0) {
     std::printf(
         "Usage: %s [--games N] [--plies N] [--time MS] [--open N]\n"
-        "          [--seed S] [--mode on|off] [--quiet]\n"
+        "          [--seed S] [--mode on|off] [--threads N] [--quiet]\n"
         "Defaults: games=10 plies=200 time=500 open=2 seed=12345 mode=on\n",
         argv0);
 }
@@ -57,6 +58,7 @@ Opts parse(int argc, char** argv) {
             const char* m = need("--mode");
             o.maxCapture = (std::strcmp(m, "off") != 0);
         }
+        else if (!std::strcmp(argv[i], "--threads")) o.threads = std::atoi(need("--threads"));
         else if (!std::strcmp(argv[i], "--quiet"))  o.quiet = true;
         else if (!std::strcmp(argv[i], "-h") || !std::strcmp(argv[i], "--help")) {
             usage(argv[0]); std::exit(0);
@@ -81,7 +83,7 @@ int main(int argc, char** argv) {
     std::mt19937_64 rng(o.seed);
 
     ai::AIEngine ai;
-    ai.setThreadCount(4);
+    ai.setThreadCount(o.threads);
 
     ai::TimeBudget budget;
     budget.soft    = std::chrono::milliseconds(o.timeMs);

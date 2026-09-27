@@ -57,3 +57,7 @@ smoke_*.raw
 # Distribution builds
 dist/
 
+
+# ai_selfplay result dumps
+*_100.txt
+
