@@ -28,17 +28,18 @@ inline constexpr int kSimplifyWeight = 3;
 /// position that looks fine on material but is positionally lost.
 inline constexpr int kBlockedManPenalty = 15;
 
-/// Man-advance weight: score per row a man has advanced toward promotion.
-/// Only active when the board has <= kManAdvanceLimit pieces so it never
-/// interferes with the midgame.
-inline constexpr int kManAdvanceWeight = 6;
-inline constexpr int kManAdvanceLimit  = 16;
-
-/// King-edge-pressure weight: bonus for pushing the opponent's kings
-/// toward the edge in king-only endings, and for keeping mine central.
-/// Only active when one side has no men and total pieces <= 10.
-inline constexpr int kKingEdgeWeight  = 8;
+/// Endgame term weights are mode-aware: InternationalFreeCapture is more
+/// drawish than MaxCapture, so the free-capture variant uses stronger
+/// weights to give the engine a firmer gradient out of drawn positions.
+inline constexpr int kManAdvanceLimit = 16;
 inline constexpr int kKingEdgeLimit   = 10;
+
+[[nodiscard]] inline int manAdvanceWeight(core::RuleSet r) noexcept {
+    return (r == core::RuleSet::InternationalMaxCapture) ? 6 : 12;
+}
+[[nodiscard]] inline int kingEdgeWeight(core::RuleSet r) noexcept {
+    return (r == core::RuleSet::InternationalMaxCapture) ? 8 : 16;
+}
 
 /// Score the position for `sideToMove`. Return value is in centipawns;
 /// one man = 100.

@@ -129,13 +129,13 @@ int evaluate(const core::Board& board,
             while (rm) {
                 const auto sq = static_cast<core::Square>(std::countr_zero(rm));
                 rm &= rm - 1;
-                red += kManAdvanceWeight * core::bc::rowOf(sq);
+                red += manAdvanceWeight(rules) * core::bc::rowOf(sq);
             }
             core::Bitboard ym = board.menMask(core::Color::Yellow);
             while (ym) {
                 const auto sq = static_cast<core::Square>(std::countr_zero(ym));
                 ym &= ym - 1;
-                red -= kManAdvanceWeight * (9 - core::bc::rowOf(sq));
+                red -= manAdvanceWeight(rules) * (9 - core::bc::rowOf(sq));
             }
         }
 
@@ -152,13 +152,13 @@ int evaluate(const core::Board& board,
             while (rk) {
                 const auto sq = static_cast<core::Square>(std::countr_zero(rk));
                 rk &= rk - 1;
-                red += kKingEdgeWeight * edgeDist(sq);
+                red += kingEdgeWeight(rules) * edgeDist(sq);
             }
             core::Bitboard yk = board.kingsMask(core::Color::Yellow);
             while (yk) {
                 const auto sq = static_cast<core::Square>(std::countr_zero(yk));
                 yk &= yk - 1;
-                red -= kKingEdgeWeight * edgeDist(sq);
+                red -= kingEdgeWeight(rules) * edgeDist(sq);
             }
         }
     }
