@@ -22,20 +22,21 @@ namespace {
 
 struct Opts {
     int           games        = 10;
-    int           maxPlies     = 200;
+    int           maxPlies     = 250;
     int           timeMs       = 500;
     int           openingPlies = 2;
     int           threads      = 4;
     std::uint64_t seed         = 12345;
     bool          maxCapture   = true;
     bool          quiet        = false;
+    bool          dumpOnAbort  = false;
 };
 
 void usage(const char* argv0) {
     std::printf(
         "Usage: %s [--games N] [--plies N] [--time MS] [--open N]\n"
-        "          [--seed S] [--mode on|off] [--threads N] [--quiet]\n"
-        "Defaults: games=10 plies=200 time=500 open=2 seed=12345 mode=on\n",
+        "          [--seed S] [--mode on|off] [--threads N] [--quiet] [--dump-on-abort]\n"
+        "Defaults: games=10 plies=250 time=500 open=2 seed=12345 mode=on\n",
         argv0);
 }
 
@@ -59,6 +60,7 @@ Opts parse(int argc, char** argv) {
             o.maxCapture = (std::strcmp(m, "off") != 0);
         }
         else if (!std::strcmp(argv[i], "--threads")) o.threads = std::atoi(need("--threads"));
+        else if (!std::strcmp(argv[i], "--dump-on-abort")) o.dumpOnAbort = true;
         else if (!std::strcmp(argv[i], "--quiet"))  o.quiet = true;
         else if (!std::strcmp(argv[i], "-h") || !std::strcmp(argv[i], "--help")) {
             usage(argv[0]); std::exit(0);
@@ -156,6 +158,38 @@ int main(int argc, char** argv) {
                             (unsigned long long)lastStats.nodes);
                 std::fflush(stdout);
             }
+        }
+
+        // Abort diagnostic: game hit maxPlies without a rule-based end.
+        if (o.dumpOnAbort && ply >= o.maxPlies
+            && engine.result() == core::GameResult::Ongoing) {
+            std::printf("\n--- ABORT DUMP (game %d) ---\n", g);
+            std::printf("Final board: %s\n", engine.board().debugString().c_str());
+            std::printf("Side to move: %s\n",
+                        engine.sideToMove() == core::Color::Red ? "Red" : "Yellow");
+            const auto dc = engine.drawCounters();
+            std::printf("Draw counters: halfmove=%d kings3v1=%d kings2v1=%d fourPiece=%d\n",
+                        dc.halfmove, dc.kings3v1, dc.kings2v1, dc.fourPiece);
+            const auto& b = engine.board();
+            std::printf("Pieces: R m=%d k=%d | Y m=%d k=%d\n",
+                        b.count(core::Color::Red,    core::PieceKind::Man),
+                        b.count(core::Color::Red,    core::PieceKind::King),
+                        b.count(core::Color::Yellow, core::PieceKind::Man),
+                        b.count(core::Color::Yellow, core::PieceKind::King));
+            const auto& hist = engine.history();
+            const int start = std::max(0, static_cast<int>(hist.size()) - 20);
+            std::printf("Last %d moves:\n", static_cast<int>(hist.size()) - start);
+            for (int i = start; i < static_cast<int>(hist.size()); ++i) {
+                const auto& rec = hist[static_cast<std::size_t>(i)];
+                std::printf("  ply %3d  %-6s  %2d->%2d  caps=%d promo=%d\n",
+                            i,
+                            rec.mover == core::Color::Red ? "Red" : "Yellow",
+                            (int)rec.move.from, (int)rec.move.to,
+                            rec.move.captureCount(),
+                            (int)rec.move.isPromotion);
+            }
+            std::printf("--- END DUMP ---\n\n");
+            std::fflush(stdout);
         }
 
         const auto r = engine.result();
