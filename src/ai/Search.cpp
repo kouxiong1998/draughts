@@ -154,6 +154,16 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
         dc.kings2v1 >= 10 || dc.fourPiece >= 40) {
         return (side == rootSide_) ? -contempt_ : contempt_;
     }
+
+    // Mate distance pruning: a mate at shorter distance is always better.
+    // Shrinks [alpha, beta]; if it collapses, return immediately.
+    {
+        const int mateLo = -kMateScore + ply;
+        const int mateHi =  kMateScore - ply - 1;
+        if (mateLo > alpha) alpha = mateLo;
+        if (mateHi < beta)  beta  = mateHi;
+        if (alpha >= beta) return alpha;
+    }
     ++nodes_;
     if ((nodes_ & 1023u) == 0 && timeMgr_.shouldStop()) return 0;
     if (ply >= kMaxPly - 1) return evaluate(board, side, rules);
@@ -231,10 +241,6 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
     // This extension is safe: it never prunes, only deepens. It inflates
     // the reported depth by the number of forced plies traversed, but the
     // extra plies are genuinely searched.
-    int childDepth = depth - 1;
-    if (count == 1 && moves[0].isCapture()) {
-        ++childDepth;
-    }
 
     int best = -kMateScore - 1;
     core::Move bestMove{};
