@@ -438,25 +438,6 @@ void GameController::launchAISearch() {
         return;
     }
 
-      // Hardcoded opening: whenever the AI has the very first move
-      // of the game (ply 0), play whatever legal move appears on the
-      // human's screen as "35 to 30" under our display-relative
-      // numbering (1-50 from bottom-left of screen). This makes the
-      // AI's opening move look identical to Kingsrow's on screen
-      // regardless of which colour the AI plays.
-      if (engine_.ply() == 0) {
-          const bool rotated =
-              (Settings::instance().playerColor() == core::Color::Red);
-          for (std::size_t i = 0; i < moves.size(); ++i) {
-              const int fromLabel = core::bc::displayLabelAt(moves[i].from, rotated);
-              const int toLabel   = core::bc::displayLabelAt(moves[i].to,   rotated);
-              if (fromLabel == 35 && toLabel == 30 && !moves[i].isCapture()) {
-                  playMoveFromAI(moves[i]);
-                  return;
-              }
-          }
-      }
-
     aiThinking_ = true;
     emit aiThinkingChanged(true);
 
@@ -475,7 +456,7 @@ void GameController::launchAISearch() {
         const int myMat  = b.count(my,  core::PieceKind::Man)  + 3 * b.count(my,  core::PieceKind::King);
         const int oppMat = b.count(opp, core::PieceKind::Man)  + 3 * b.count(opp, core::PieceKind::King);
         const int diff = myMat - oppMat;
-        const int c = (diff > 0) ? +25 : (diff < 0 ? -25 : +15);
+        const int c = (diff > 0) ? +25 : (diff < 0 ? -25 : 0);
         ai_.setContempt(c);
     }
 
