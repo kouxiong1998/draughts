@@ -308,25 +308,16 @@ int Search::negamax(const core::Board& board, core::Color side, core::RuleSet ru
             score = -negamax(next, opp, rules, depth - 1,
                              -beta, -alpha, ply + 1, nextDc);
         } else {
-            // Phase 3c - history pruning at shallow depth: skip quiet moves
-            // ordered late with very low history score. These have never
-            // caused a cutoff in past searches and are very unlikely to here.
-            if (depth <= 3 && i > 8 && !m.isCapture() && !m.isPromotion && !mateWindow) {
-                const int histScore = (m.from < 50u && m.to < 50u)
-                                      ? history_[m.from][m.to] : 0;
-                if (histScore < depth * 30) continue;
-            }
-
-            // Phase 3d - aggressive LMR: earlier threshold (i >= 3,
-            // depth >= 2) with three tiers of reduction. Capped so that
-            // reduction never exceeds remaining depth - 1.
+            // Late Move Reduction: quiet moves ordered after the first
+            // few are searched at reduced depth. Draughts is zugzwang-
+            // prone, so we only reduce quiet moves, only after index 3,
+            // and only at depth >= 3. Any move whose reduced search
+            // beats alpha is re-searched at full depth, so the minimax
+            // value is unchanged.
             int reduction = 0;
-            if (i >= 3 && depth >= 2 && !m.isCapture() && !m.isPromotion) {
-                if      (i >= 10) reduction = 3;
-                else if (i >= 6)  reduction = 2;
-                else              reduction = 1;
+            if (i >= 4 && depth >= 3 && !m.isCapture()) {
+                reduction = (i >= 8) ? 2 : 1;
                 if (reduction >= depth) reduction = depth - 1;
-                if (reduction < 0) reduction = 0;
             }
 
             score = -negamax(next, opp, rules, depth - 1 - reduction,
