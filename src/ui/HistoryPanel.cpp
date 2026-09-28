@@ -1,4 +1,5 @@
 #include "HistoryPanel.hpp"
+#include "BoardWidget.hpp"
 #include "GameController.hpp"
 #include "core/Notation.hpp"
 
@@ -63,9 +64,10 @@ HistoryPanel::HistoryPanel(QWidget* parent) : QWidget(parent) {
     });
 }
 
-void HistoryPanel::setController(GameController* c) {
+void HistoryPanel::setController(GameController* c, BoardWidget* b) {
     if (controller_) disconnect(controller_, nullptr, this, nullptr);
     controller_ = c;
+    board_      = b;
     if (controller_)
         connect(controller_, &GameController::changed,
                 this, &HistoryPanel::refresh);
@@ -88,7 +90,7 @@ void HistoryPanel::refresh() {
         // when Yellow moves first, the side parameter is off by one ply
         // and expandChainLandings rejects every chain.
         const QString text = QString::fromStdString(
-            core::formatMoveHistory(board, rec.mover, rec.move));
+            core::formatMoveHistory(board, rec.mover, rec.move, board_ && board_->isRotated()));
 
         auto* item = new QListWidgetItem(
             QString("%1: %2").arg(i + 1).arg(text));

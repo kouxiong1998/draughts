@@ -10,13 +10,14 @@ class QListWidget;
 namespace draughts::ui {
 
 class GameController;
+class BoardWidget;
 
 class HistoryPanel : public QWidget {
     Q_OBJECT
 public:
     explicit HistoryPanel(QWidget* parent = nullptr);
 
-    void setController(GameController* controller);
+    void setController(GameController* controller, BoardWidget* board);
 
 signals:
     void backRequested();
@@ -26,6 +27,7 @@ public slots:
 
 private:
     GameController* controller_{nullptr};
+    BoardWidget*    board_{nullptr};
     QListWidget*    list_{nullptr};
 };
 

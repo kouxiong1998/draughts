@@ -19,7 +19,8 @@ namespace draughts::core {
 /// Requires the board *before* the move to reconstruct chain landings.
 [[nodiscard]] std::string formatMove(const Board& boardBefore,
                                      Color        side,
-                                     const Move&  move);
+                                     const Move&  move,
+                                     bool         rotated = false);
 
 /// Format a move in the history-panel display style.
 ///   Quiet:   "Y17 - Y23"    or   "RK1 - RK23"  (K = king)
@@ -29,7 +30,8 @@ namespace draughts::core {
 /// of a promoting man is shown as RK/YK.
 [[nodiscard]] std::string formatMoveHistory(const Board& boardBefore,
                                             Color        side,
-                                            const Move&  move);
+                                            const Move&  move,
+                                            bool         rotated = false);
 /// Number a ply as "1." / "1..." - Red moves are "N.", Yellow are "N...".
 [[nodiscard]] std::string formatMoveNumber(int ply, Color mover);
 

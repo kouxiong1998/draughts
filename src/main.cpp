@@ -16,6 +16,7 @@
 #include "ui/GameController.hpp"
 #include "ui/HistoryPanel.hpp"
 #include "ui/Settings.hpp"
+#include "ui/SettingsDialog.hpp"
 #include "ui/SidePanel.hpp"
 #include "ui/SoundManager.hpp"
 
@@ -80,10 +81,6 @@ int main(int argc, char** argv) {
     // ?? Left column: board + gear (panel toggle) below ?????????????????????
     auto* board = new draughts::ui::BoardWidget(&window);
     board->setController(controller);
-    {
-        const auto pc = draughts::ui::Settings::instance().playerColor();
-        board->setRotated(pc == draughts::core::Color::Red);
-    }
 
     auto* toggleBtn = new QPushButton(QStringLiteral("\u2699"), &window);
     toggleBtn->setFixedSize(36, 36);
@@ -105,7 +102,7 @@ int main(int argc, char** argv) {
     auto* side    = new draughts::ui::SidePanel(&window);
     auto* history = new draughts::ui::HistoryPanel(&window);
     side->setController(controller, board);
-    history->setController(controller);
+    history->setController(controller, board);
 
     auto* sound = new draughts::ui::SoundManager(&window);
     sound->setController(controller);
@@ -166,6 +163,22 @@ int main(int argc, char** argv) {
     });
 
     window.setCentralWidget(splitter);
+    // Startup settings dialog: forces the user to confirm
+    // colour, first-move, and rule mode before each launch.
+    // Cancel = keep the previously saved settings.
+    {
+        draughts::ui::SettingsDialog startupDlg(&window);
+        if (startupDlg.exec() == QDialog::Accepted) {
+            controller->newGame();
+        }
+    }
+
+    // Apply board orientation: the human player's colour sits at
+    // the bottom of the screen. Red at bottom = rotated 180 degrees.
+    board->setRotated(
+        draughts::ui::Settings::instance().playerColor()
+            == draughts::core::Color::Red);
+
     window.show();
 
     QTimer::singleShot(0, &window, [&window]{

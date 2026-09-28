@@ -93,22 +93,14 @@ QPainterPath starPath(const QPointF& center, double outerR, double innerR) {
 ///
 ///   Red king    -> bright red star with dark-red outline
 ///   Yellow king -> bright yellow star with dark-amber outline
-void drawStar(QPainter& p, const QRectF& disc, bool isRedPiece) {
+void drawStar(QPainter& p, const QRectF& disc, bool /*isRedPiece*/) {
+    // Solid black star spanning the full chip.
     const QPointF c       = disc.center();
-    const double  outerR  = disc.width() * 0.26;
+    const double  outerR  = disc.width() * 0.50;
     const double  innerR  = outerR * 0.42;
 
-    QColor fill, edge;
-    if (isRedPiece) {
-        fill = QColor(255,  70,  70);   // bright red
-        edge = QColor( 80,   0,   0);   // dark red outline
-    } else {
-        fill = QColor(255, 255, 190);   // bright yellow
-        edge = QColor(120,  80,   0);   // dark amber outline
-    }
-
-    p.setPen(QPen(edge, std::max(1.0, disc.width() * 0.018)));
-    p.setBrush(fill);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 0, 0));
     p.drawPath(starPath(c, outerR, innerR));
 }
 

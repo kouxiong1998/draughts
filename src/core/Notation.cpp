@@ -39,9 +39,9 @@ void splitInto(std::string_view s, char sep, std::vector<std::string_view>& out)
 
 } // namespace
 
-std::string formatMove(const Board& boardBefore, Color side, const Move& move) {
+std::string formatMove(const Board& boardBefore, Color side, const Move& move, bool rotated) {
     std::ostringstream os;
-    auto lab = [](Square s) { return bc::displayLabel(s); };
+    auto lab = [rotated](Square s) { return bc::displayLabelAt(s, rotated); };
 
     if (!move.isCapture()) {
         os << lab(move.from) << '-' << lab(move.to);
@@ -198,7 +198,7 @@ std::vector<Square> reconstructChain(const Board& board, Color side,
 
 } // namespace
 
-std::string formatMoveHistory(const Board& boardBefore, Color side, const Move& move) {
+std::string formatMoveHistory(const Board& boardBefore, Color side, const Move& move, bool rotated) {
     std::ostringstream os;
 
     auto prefix = [](Color c, PieceKind k) -> std::string {
@@ -215,9 +215,9 @@ std::string formatMoveHistory(const Board& boardBefore, Color side, const Move& 
     if (!move.isCapture()) {
         const bool promotes = (startKind == PieceKind::Man && move.isPromotion);
         const PieceKind endKind = promotes ? PieceKind::King : startKind;
-        os << prefix(c, startKind) << bc::displayLabel(move.from)
+        os << prefix(c, startKind) << bc::displayLabelAt(move.from, rotated)
            << " - "
-           << prefix(c, endKind) << bc::displayLabel(move.to);
+           << prefix(c, endKind) << bc::displayLabelAt(move.to, rotated);
         return os.str();
     }
 
@@ -230,8 +230,8 @@ std::string formatMoveHistory(const Board& boardBefore, Color side, const Move& 
                                         static_cast<int>(landings.size()));
 
     if (!ok) {
-        os << prefix(c, startKind) << bc::displayLabel(move.from)
-           << " X " << prefix(c, startKind) << bc::displayLabel(move.to);
+        os << prefix(c, startKind) << bc::displayLabelAt(move.from, rotated)
+           << " X " << prefix(c, startKind) << bc::displayLabelAt(move.to, rotated);
         return os.str();
     }
 
@@ -240,7 +240,7 @@ std::string formatMoveHistory(const Board& boardBefore, Color side, const Move& 
     // coincide with the final landing (e.g. 24 -> 33 -> ... -> 33).
     const std::size_t expected = 1
         + static_cast<std::size_t>(move.captureCount());
-    os << prefix(c, startKind) << bc::displayLabel(landings[0]);
+    os << prefix(c, startKind) << bc::displayLabelAt(landings[0], rotated);
     for (std::size_t i = 1; i < expected && i < landings.size(); ++i) {
         const Square s = landings[i];
         if (s == kInvalidSquare) break;
@@ -251,7 +251,7 @@ std::string formatMoveHistory(const Board& boardBefore, Color side, const Move& 
                                   && move.isPromotion;
         const PieceKind hopKind = promotesHere ? PieceKind::King : startKind;
 
-        os << " X " << prefix(c, hopKind) << bc::displayLabel(s);
+        os << " X " << prefix(c, hopKind) << bc::displayLabelAt(s, rotated);
     }
     return os.str();
 }

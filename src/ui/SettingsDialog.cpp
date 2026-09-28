@@ -92,7 +92,7 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     colorGroup->addButton(colorYellow_);
     (st.playerColor() == core::Color::Red
          ? colorRed_ : colorYellow_)->setChecked(true);
-    form->addRow("Chip colour (I play as):", colorRed_);
+    form->addRow("I play as:", colorRed_);
     form->addRow("",                          colorYellow_);
 
     auto* note = new QLabel(

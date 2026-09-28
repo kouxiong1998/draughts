@@ -438,20 +438,24 @@ void GameController::launchAISearch() {
         return;
     }
 
-    // Hardcoded opening: when the AI is Red and it's the very
-    // first move of the game, play 35-30 (maps to Kingsrow's
-    // 20-25 in its coordinate system). Only fires at ply 0.
-    if (engine_.ply() == 0 && engine_.sideToMove() == core::Color::Red) {
-        const core::Square hardFrom = core::bc::fromDisplayLabel(35);
-        const core::Square hardTo   = core::bc::fromDisplayLabel(30);
-        for (std::size_t i = 0; i < moves.size(); ++i) {
-            if (moves[i].from == hardFrom && moves[i].to == hardTo
-                && !moves[i].isCapture()) {
-                playMoveFromAI(moves[i]);
-                return;
-            }
-        }
-    }
+      // Hardcoded opening: whenever the AI has the very first move
+      // of the game (ply 0), play whatever legal move appears on the
+      // human's screen as "35 to 30" under our display-relative
+      // numbering (1-50 from bottom-left of screen). This makes the
+      // AI's opening move look identical to Kingsrow's on screen
+      // regardless of which colour the AI plays.
+      if (engine_.ply() == 0) {
+          const bool rotated =
+              (Settings::instance().playerColor() == core::Color::Red);
+          for (std::size_t i = 0; i < moves.size(); ++i) {
+              const int fromLabel = core::bc::displayLabelAt(moves[i].from, rotated);
+              const int toLabel   = core::bc::displayLabelAt(moves[i].to,   rotated);
+              if (fromLabel == 35 && toLabel == 30 && !moves[i].isCapture()) {
+                  playMoveFromAI(moves[i]);
+                  return;
+              }
+          }
+      }
 
     aiThinking_ = true;
     emit aiThinkingChanged(true);

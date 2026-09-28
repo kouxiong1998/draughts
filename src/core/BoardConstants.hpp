@@ -134,6 +134,13 @@ inline constexpr RayTable       kRayTable{};
     const int col        = firstCol + withinRow * 2;
     return indexFromRowCol(row, col);
 }
+
+/// Display-relative label: always 1 at the bottom-left of the SCREEN,
+/// 50 at top-right, regardless of whether the board is rotated. When
+/// `rotated` is true, we swap to the mirrored square first.
+[[nodiscard]] constexpr int displayLabelAt(Square sq, bool rotated) noexcept {
+    return rotated ? displayLabel(mirrorSquare(sq)) : displayLabel(sq);
+}
 // -- Initial setup bitboards --------------------------------------------------
 inline constexpr Bitboard kInitialRed    = (Bitboard{1} << 20) - 1;
 inline constexpr Bitboard kInitialYellow = ((Bitboard{1} << 20) - 1) << 30;

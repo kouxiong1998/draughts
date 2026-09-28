@@ -41,6 +41,10 @@ private:
     GameController* controller_{nullptr};
     BoardWidget*    board_{nullptr};
 
+    /// User clicked the Rotate button since the last new game.
+    /// When false, refresh() enforces human-side-at-bottom.
+    bool manuallyRotatedThisGame_{false};
+
     QLabel* turnLabel_{nullptr};
     QLabel* moveLabel_{nullptr};
     QLabel* captureLabel_{nullptr};

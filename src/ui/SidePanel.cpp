@@ -187,7 +187,7 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
 
     undoBtn_         = new QPushButton("Undo",           this);
     redoBtn_         = new QPushButton("Redo",           this);
-    rotateBtn_       = new QPushButton(QStringLiteral("Rotate 180\u00B0"), this);
+    rotateBtn_       = new QPushButton(QStringLiteral("Rotate"), this);
     newGameBtn_      = new QPushButton("New Game",       this);
     resignBtn_       = new QPushButton("Give Up",        this);
     settingsBtn_     = new QPushButton("Settings...",    this);
@@ -257,12 +257,19 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     connect(resignBtn_,  &QPushButton::clicked, this, [this]{ if (controller_) controller_->resign(); });
     connect(drawBtn_,    &QPushButton::clicked, this, [this]{ if (controller_) controller_->offerDraw(); });
     connect(rotateBtn_,  &QPushButton::clicked, this, [this]{
-        if (board_) { board_->setRotated(!board_->isRotated()); refresh(); }
+        if (board_) {
+            board_->setRotated(!board_->isRotated());
+            const bool autoRot =
+                (Settings::instance().playerColor() == core::Color::Red);
+            manuallyRotatedThisGame_ = (board_->isRotated() != autoRot);
+            refresh();
+        }
     });
 
     connect(newGameBtn_, &QPushButton::clicked, this, [this]{
         aiStatusLabel_->clear();
         ponderLabel_->clear();
+        manuallyRotatedThisGame_ = false;
         if (controller_) controller_->newGame();
         if (board_) {
             const auto pc = Settings::instance().playerColor();
@@ -295,6 +302,8 @@ SidePanel::SidePanel(QWidget* parent) : QWidget(parent) {
     });
 
     connect(replayToggleBtn_, &QPushButton::clicked, this, [this]{
+        if (!controller_) return;
+
         if (!controller_) return;
         if (controller_->isReplaying()) controller_->exitReplay();
         else                            controller_->enterReplay();
@@ -369,6 +378,18 @@ void SidePanel::setController(GameController* c, BoardWidget* b) {
 void SidePanel::refresh() {
     if (!controller_) return;
 
+    // Human-side-at-bottom rule: on a fresh game (ply 0), unless
+    // the user has manually rotated since the last new game, orient
+    // the board so the human player's colour sits at the bottom.
+    if (board_ && !manuallyRotatedThisGame_ && controller_->ply() == 0) {
+        const bool wantRotated =
+            (Settings::instance().playerColor() == core::Color::Red);
+        if (board_->isRotated() != wantRotated) {
+            board_->setRotated(wantRotated);
+            if (rotateBtn_) rotateBtn_->setText(QStringLiteral("Rotate"));
+        }
+    }
+
     const auto side = controller_->sideToMove();
     const auto res  = controller_->result();
 
@@ -418,6 +439,14 @@ void SidePanel::refresh() {
     const bool lock = controller_->aiThinking();
     modeHumanHuman_->setEnabled(!lock);
     modeHumanAI_->setEnabled(!lock);
+
+    // Sync rotate-button label from the manual-override flag.
+    if (board_ && rotateBtn_) {
+        const QString want = manuallyRotatedThisGame_
+            ? QStringLiteral("Rotate: 180\u00B0")
+            : QStringLiteral("Rotate");
+        if (rotateBtn_->text() != want) rotateBtn_->setText(want);
+    }
 }
 
 void SidePanel::onAIThinkingChanged(bool thinking) {
@@ -517,7 +546,7 @@ void SidePanel::onCopyNotation() {
     for (std::size_t i = 0; i < cursor; ++i) {
         const auto& rec = hist[i];
         const auto num  = core::formatMoveNumber(static_cast<int>(i), rec.mover);
-        const auto mv   = core::formatMove(board, side, rec.move);
+        const auto mv   = core::formatMove(board, side, rec.move, board_->isRotated());
         text += QString("%1 %2\n").arg(QString::fromStdString(num), -6)
                                   .arg(QString::fromStdString(mv));
 
@@ -596,7 +625,7 @@ void SidePanel::onCopyPGN() {
             const int moveNo = static_cast<int>(i) / 2 + 1;
             token += QString("%1. ").arg(moveNo);
         }
-        token += QString::fromStdString(core::formatMove(board, side, rec.move));
+        token += QString::fromStdString(core::formatMove(board, side, rec.move, board_->isRotated()));
         token += ' ';
 
         if (lineLen > 0 && lineLen + token.length() > 79) {
